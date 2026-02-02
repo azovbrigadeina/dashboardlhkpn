@@ -2,52 +2,28 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- 1. FORCE LIGHT MODE & CUSTOM CSS ---
-st.set_page_config(page_title="LHKPN UNJA", layout="wide")
+# --- 1. CONFIG ---
+st.set_page_config(page_title="LHKPN Universitas Jambi", layout="wide")
 
+# --- 2. CSS ADAPTIF (Bisa Terang/Gelap) ---
 st.markdown("""
     <style>
-    /* Memaksa warna latar belakang seluruh halaman menjadi putih terang */
-    .stApp {
-        background-color: #FFFFFF;
+    /* Menggunakan variabel warna bawaan Streamlit agar adaptif */
+    .stMetric {
+        background-color: rgba(151, 166, 195, 0.1);
+        padding: 15px;
+        border-radius: 10px;
     }
-    
-    /* Memaksa semua teks utama menjadi hitam agar terbaca */
-    h1, h2, h3, h4, h5, h6, p, span, label {
-        color: #101828 !important;
-    }
-
-    /* Styling Sidebar agar tetap putih/terang */
-    [data-testid="stSidebar"] {
-        background-color: #F9FAFB !important;
-        border-right: 1px solid #EAECF0;
-    }
-
-    /* Styling Kartu Metric agar putih dengan teks hitam */
-    div[data-testid="metric-container"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #EAECF0 !important;
-        padding: 20px;
-        border-radius: 12px;
-    }
-    
-    /* Memperbaiki warna teks di dalam dataframe agar tidak putih */
-    .stDataFrame div {
-        color: #101828 !important;
-    }
-
-    /* Tombol Login Biru */
-    .stButton>button {
-        background-color: #1570EF !important;
-        color: white !important;
-    }
+    /* Menghilangkan header default agar bersih */
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIKA DATA ---
+# --- 3. LOGIKA DATA (NIK CLEANING) ---
 def proses_data_unja(df, filter_bulan):
     df.columns = df.columns.str.strip()
-    # Cleaning NIK dari tanda petik agar deduplikasi akurat
+    # Membersihkan NIK dari tanda petik satu agar deduplikasi akurat
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True)
     
     def get_zona(row):
@@ -60,12 +36,14 @@ def proses_data_unja(df, filter_bulan):
         return 4, "⚪ LAINNYA"
 
     df['rank'], df['ZONA'] = zip(*df.apply(get_zona, axis=1))
+    
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     
+    # Ambil status terbaik per individu unik
     return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
 
-# --- 3. LOGIN PAGE ---
+# --- 4. LOGIN ---
 if 'auth' not in st.session_state:
     st.session_state['auth'] = False
 
@@ -73,77 +51,88 @@ if not st.session_state['auth']:
     _, col, _ = st.columns([1, 1.2, 1])
     with col:
         st.write("#")
-        st.markdown("<h2 style='text-align: center;'>Sistem Monitoring LHKPN</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center;'>Universitas Jambi</p>", unsafe_allow_html=True)
+        st.write("#")
+        st.title("Sistem LHKPN UNJA")
+        st.caption("Universitas Jambi - Portal Monitoring")
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
-        if st.button("Masuk Ke Dashboard", use_container_width=True):
+        if st.button("Log In", use_container_width=True):
             if p == "123456":
                 st.session_state['auth'] = True
                 st.rerun()
             else: st.error("Akses Ditolak")
     st.stop()
 
-# --- 4. DASHBOARD UTAMA ---
+# --- 5. DASHBOARD ---
 with st.sidebar:
-    st.markdown("<h3 style='color: #101828;'>UNJA MONITORING</h3>", unsafe_allow_html=True)
-    if st.button("Keluar"):
+    st.title("UNJA DASHBOARD")
+    if st.button("Log Out"):
         st.session_state['auth'] = False
         st.rerun()
     st.divider()
-    file_upload = st.file_uploader("Upload File (Excel/CSV)", type=["xlsx", "csv"])
+    file_upload = st.file_uploader("Upload File LHKPN", type=["xlsx", "csv"])
 
 if file_upload:
-    # Membaca file dengan aman
     try:
+        # Deteksi format file
         if file_upload.name.endswith('.csv'):
             raw = pd.read_csv(file_upload)
         else:
             raw = pd.read_excel(file_upload)
             
         list_bln = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in raw['BULAN'].unique() if pd.notna(b)])
-        sel_bln = st.sidebar.selectbox("Pilih Periode:", list_bln)
+        sel_bln = st.sidebar.selectbox("Filter Periode:", list_bln)
         
         data = proses_data_unja(raw, sel_bln)
 
-        # Header
-        st.markdown(f"<h1>Dashboard Kepatuhan LHKPN</h1>", unsafe_allow_html=True)
-        st.markdown(f"<b>Universitas Jambi</b> — Periode: {sel_bln}", unsafe_allow_html=True)
+        # Header Utama
+        st.title("🏛️ Monitoring Kepatuhan LHKPN")
+        st.subheader(f"Universitas Jambi — {sel_bln}")
         st.write("---")
 
-        # Metrik Utama
+        # Metrik - Menggunakan kolom standar Streamlit
         m1, m2, m3, m4 = st.columns(4)
         total = len(data)
         hitam = len(data[data['ZONA'] == "⚫ ZONA HITAM"])
         rate = ((total - hitam) / total * 100) if total > 0 else 0
 
         m1.metric("Wajib Lapor", total)
-        m2.metric("Zona Hijau", len(data[data['ZONA'] == "🟢 ZONA HIJAU"]))
-        m3.metric("Zona Hitam", hitam)
+        m2.metric("🟢 Zona Hijau", len(data[data['ZONA'] == "🟢 ZONA HIJAU"]))
+        m3.metric("⚫ Zona Hitam", hitam)
         m4.metric("Kepatuhan", f"{rate:.1f}%")
 
-        # Visualisasi
+        # Visualisasi (Warna diatur agar kontras di Dark/Light)
         st.write("#")
         c1, c2 = st.columns([1, 1.5])
         with c1:
-            st.markdown("##### Komposisi Zona")
+            st.markdown("### Komposisi Kepatuhan")
             fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
-                         color_discrete_map={"🟢 ZONA HIJAU":"#12B76A", "🟡 ZONA KUNING":"#F79009", 
-                                             "🔴 ZONA MERAH":"#F04438", "⚫ ZONA HITAM":"#1D2939", "⚪ LAINNYA":"#D0D5DD"})
+                         color_discrete_map={
+                             "🟢 ZONA HIJAU":"#22C55E", 
+                             "🟡 ZONA KUNING":"#F59E0B", 
+                             "🔴 ZONA MERAH":"#EF4444", 
+                             "⚫ ZONA HITAM":"#64748B", # Abu-abu gelap agar terlihat di hitam
+                             "⚪ LAINNYA":"#94A3B8"})
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                              font_color='gray', legend=dict(font=dict(color='gray')))
             st.plotly_chart(fig, use_container_width=True)
         
         with c2:
-            st.markdown("##### 10 Unit Kerja Terbanyak Belum Lapor")
-            df_unit = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
-            df_unit.columns = ['Unit Kerja', 'Jumlah']
-            fig_bar = px.bar(df_unit, x='Jumlah', y='Unit Kerja', orientation='h', color_discrete_sequence=['#1D2939'])
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.markdown("### Unit Kerja Belum Lapor")
+            df_u = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
+            df_u.columns = ['Unit Kerja', 'Jumlah']
+            st.dataframe(df_u, use_container_width=True, hide_index=True)
 
-        # Detail Tabel
-        with st.expander("🔍 DETAIL NAMA DAN STATUS"):
-            st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True)
+        # Tabel Data
+        st.write("---")
+        with st.expander("🔍 Klik untuk Detail Individu"):
+            st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], 
+                         use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Gagal membaca file: {e}")
+        st.error(f"Terjadi kesalahan pembacaan data: {e}")
 else:
-    st.info("Silakan unggah database LHKPN melalui sidebar.")
+    st.markdown("""
+        ### Selamat Datang di Dashboard LHKPN UNJA
+        Silakan unggah database pelaporan (format CSV atau Excel) di sidebar untuk melihat analisis.
+    """)
