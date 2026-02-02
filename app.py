@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 
-st.title("Dashboard Kepatuhan LHKPN - Zona Sederhana + Chart")
+st.set_page_config(page_title="Dashboard Zona LHKPN", layout="wide")
 
-uploaded_file = st.file_uploader("Unggah file XLS/XLSX", type=['xls', 'xlsx'])
+# Judul utama sesuai contoh Anda
+st.markdown("<h2 style='text-align: center; color: #1E88E5;'>Predikat Zona Kepatuhan (dirangking)</h2>", unsafe_allow_html=True)
+
+uploaded_file = st.file_uploader("Unggah file XLS/XLSX LHKPN", type=['xls', 'xlsx'])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
@@ -12,7 +14,7 @@ if uploaded_file:
     df['BULAN'] = df['BULAN'].str.strip().str.capitalize()
 
     def get_predikat(row):
-        s = row['Status LHKPN'].strip()
+        s = str(row['Status LHKPN']).strip()
         b = row['BULAN']
         if s == 'Diumumkan Lengkap' and b == 'Januari': return 'Hijau'
         if s == 'Terverifikasi Lengkap' and b == 'Februari': return 'Kuning'
@@ -22,7 +24,7 @@ if uploaded_file:
 
     df['Predikat'] = df.apply(get_predikat, axis=1)
 
-    view = st.selectbox("Pilih periode", ["Januari", "Februari", "Maret", "Global"])
+    view = st.selectbox("Pilih Periode", ["Januari", "Februari", "Maret", "Global (kumulatif)"])
 
     if view == "Global":
         df_f = df[df['BULAN'].isin(['Januari', 'Februari', 'Maret'])]
@@ -30,62 +32,63 @@ if uploaded_file:
         df_f = df[df['BULAN'] == view]
 
     if df_f.empty:
-        st.warning(f"Tidak ada data untuk {view}")
+        st.warning(f"Tidak ada data untuk periode {view}")
     else:
-        # Hitung dominan per sub unit (predikat terbanyak)
+        # Hitung predikat dominan per Sub Unit Kerja (yang terbanyak)
         grouped = df_f.groupby(['SUB UNIT KERJA', 'Predikat']).size().unstack(fill_value=0)
         dominant = {}
         for sub, row in grouped.iterrows():
             if row.sum() == 0:
-                dominant[sub] = "Tidak ada data"
+                dominant[sub] = "Lainnya"
             else:
-                dominant[sub] = row.idxmax()  # predikat dengan jumlah terbanyak
+                dominant[sub] = row.idxmax()   # predikat dengan jumlah terbanyak
 
-        # Grouping zona
-        zona = {"Hijau": [], "Kuning": [], "Merah": [], "Hitam": [], "Lainnya": [], "Tidak ada data": []}
+        # Buat dataframe per zona
+        zona_data = {
+            'Hijau': [],
+            'Kuning': [],
+            'Merah': [],
+            'Hitam': [],
+            'Lainnya': []
+        }
+
         for sub, z in dominant.items():
-            zona[z].append(sub)
+            if z in zona_data:
+                zona_data[z].append(sub)
 
-        st.subheader(f"Zona Kepatuhan - {view}")
-        for z, units in zona.items():
-            if units:
-                st.markdown(f"**Zona {z}**: {', '.join(sorted(units))}")
-            else:
-                st.markdown(f"**Zona {z}**: -")
+        # Urutkan alfabetis tiap zona (bisa diganti kriteria lain)
+        for z in zona_data:
+            zona_data[z].sort()
 
-        # --- CHART 1: Pie Chart Global (semua data di view ini) ---
-        st.subheader(f"Pie Chart Distribusi Predikat - {view}")
-        pred_count = df_f['Predikat'].value_counts()
-        fig_pie, ax_pie = plt.subplots(figsize=(6, 6))
-        colors = {'Hijau': '#4CAF50', 'Kuning': '#FFEB3B', 'Merah': '#F44336', 'Hitam': '#212121', 'Lainnya': '#9E9E9E'}
-        ax_pie.pie(pred_count, labels=pred_count.index, autopct='%1.1f%%',
-                   colors=[colors.get(p, '#9E9E9E') for p in pred_count.index],
-                   startangle=90, textprops={'fontsize': 12})
-        ax_pie.axis('equal')
-        st.pyplot(fig_pie)
+        # Warna untuk tiap zona
+        warna_zona = {
+            'Hijau': '#4CAF50',
+            'Kuning': '#FFC107',
+            'Merah': '#F44336',
+            'Hitam': '#212121',
+            'Lainnya': '#757575'
+        }
 
-        # --- CHART 2: Pie Chart per Sub Unit (jika ada lebih dari 1 sub unit) ---
-        if len(grouped) > 1:
-            st.subheader("Pie Chart per Sub Unit Kerja")
-            col1, col2 = st.columns(2)
-            for i, (sub, row) in enumerate(grouped.iterrows()):
-                if row.sum() == 0: continue
-                with (col1 if i % 2 == 0 else col2):
-                    fig_sub, ax_sub = plt.subplots(figsize=(5, 5))
-                    ax_sub.pie(row, labels=row.index, autopct='%1.0f%%',
-                               colors=[colors.get(p, '#9E9E9E') for p in row.index],
-                               startangle=90)
-                    ax_sub.set_title(sub, fontsize=11)
-                    st.pyplot(fig_sub)
+        # Tampilkan per zona seperti tabel yang Anda inginkan
+        for zona, units in zona_data.items():
+            if not units:
+                continue
 
-        # --- CHART 3: Bar Chart distribusi per Sub Unit ---
-        st.subheader(f"Bar Chart Distribusi Predikat per Sub Unit - {view}")
-        fig_bar, ax_bar = plt.subplots(figsize=(10, 6))
-        grouped.plot(kind='bar', stacked=True, ax=ax_bar, color=[colors.get(c, '#9E9E9E') for c in grouped.columns])
-        ax_bar.set_title("Jumlah per Predikat per Sub Unit Kerja")
-        ax_bar.set_ylabel("Jumlah Pegawai")
-        ax_bar.set_xlabel("Sub Unit Kerja")
-        ax_bar.legend(title="Predikat", bbox_to_anchor=(1.02, 1), loc='upper left')
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        st.pyplot(fig_bar)
+            st.markdown(f"<h3 style='color: {warna_zona.get(zona, '#000000')};'>{zona}</h3>", unsafe_allow_html=True)
+
+            # Buat dataframe untuk tabel
+            df_zona = pd.DataFrame({
+                'No': range(1, len(units) + 1),
+                'Sub Unit Kerja': units
+            })
+
+            # Tampilkan tabel tanpa index
+            st.table(df_zona.style.set_properties(**{
+                'text-align': 'left',
+                'font-size': '14px'
+            }))
+
+            st.markdown("---")  # garis pemisah antar zona
+
+        # Info tambahan kecil di bawah
+        st.caption(f"Data diolah untuk periode: {view} | Total Sub Unit: {len(dominant)} | Tanggal proses: {pd.Timestamp.now().strftime('%d %b %Y %H:%M')}")
