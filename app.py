@@ -2,152 +2,129 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Konfigurasi Halaman & Styling
-st.set_page_config(page_title="Sistem Monitoring LHKPN", layout="wide")
-
-# Custom CSS agar halaman login di tengah
-st.markdown("""
-    <style>
-    .login-box {
-        background-color: #f0f2f6;
-        padding: 30px;
-        border-radius: 10px;
-        border: 1px solid #d1d5db;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# 2. Fungsi Logika Predikat
-def tentukan_predikat(row):
-    status = str(row['Status LHKPN']).strip()
-    bulan = str(row['BULAN']).strip().upper()
-    
-    if status == "Diumumkan Lengkap" and bulan == "JANUARI":
-        return "🟢 ZONA HIJAU"
-    elif status == "Terverifikasi Lengkap" and bulan == "FEBRUARI":
-        return "🟡 ZONA KUNING"
-    elif status == "Draft" and bulan == "MARET":
-        return "🔴 ZONA MERAH"
-    elif status == "Belum Lapor":
-        return "⚫ ZONA HITAM"
-    else:
-        return "⚪ LAINNYA"
-
-# 3. Inisialisasi Session State untuk Login
+# 1. Konfigurasi & Session State
+st.set_page_config(page_title="Dashboard LHKPN Unifikasi", layout="wide")
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+# --- LOGIKA PENENTUAN PREDIKAT (Ditingkatkan) ---
+def proses_data_unik(df):
+    # Bersihkan nama kolom
+    df.columns = df.columns.str.strip()
+    
+    # Pastikan NIK diperlakukan sebagai string agar tidak berantakan
+    df['NIK'] = df['NIK'].astype(str)
+
+    # Logika Penentuan Predikat per Baris
+    def get_row_predikat(row):
+        status = str(row['Status LHKPN']).strip()
+        bulan = str(row['BULAN']).strip().upper()
+        
+        if status == "Diumumkan Lengkap" and bulan == "JANUARI":
+            return 1, "🟢 ZONA HIJAU"
+        elif status == "Terverifikasi Lengkap" and bulan == "FEBRUARI":
+            return 2, "🟡 ZONA KUNING"
+        elif status == "Draft" and bulan == "MARET":
+            return 3, "🔴 ZONA MERAH"
+        elif status == "Belum Lapor":
+            return 5, "⚫ ZONA HITAM"
+        else:
+            return 4, "⚪ LAINNYA"
+
+    # Tambahkan kolom sementara untuk ranking predikat (makin kecil makin baik)
+    df['rank'], df['PREDIKAT'] = zip(*df.apply(get_row_predikat, axis=1))
+
+    # PROSES UNIFIKASI: Ambil 1 NIK 1 Status terbaik
+    # Kita urutkan berdasarkan NIK dan Rank terkecil (terbaik)
+    df_sorted = df.sort_values(by=['NIK', 'rank'])
+    
+    # Drop duplikat, simpan baris dengan predikat terbaik untuk tiap NIK
+    df_unik = df_sorted.drop_duplicates(subset=['NIK'], keep='first')
+    
+    return df_unik
+
 # --- HALAMAN LOGIN ---
 def login_page():
+    # ... (sama seperti sebelumnya) ...
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.write("") 
-        st.write("") 
-        st.markdown("<h1 style='text-align: center;'>🔐 Login Sistem Dashboarh #slavaukraini</h1>", unsafe_allow_html=True)
-        with st.container():
-            username = st.text_input("Username", placeholder="Masukkan username bebas...")
-            password = st.text_input("Password", type="password", placeholder="Masukkan Password")
-            
-            if st.button("Masuk Sekarang", use_container_width=True):
-                if password == "123456":
-                    st.session_state['logged_in'] = True
-                    st.success("Login Berhasil! Mengalihkan...")
-                    st.rerun()
-                else:
-                    st.error("Password salah! Coba lagi.")
+        st.markdown("<h1 style='text-align: center;'>🔐 Login Sistem</h1>", unsafe_allow_html=True)
+        password = st.text_input("Password", type="password")
+        if st.button("Masuk", use_container_width=True):
+            if password == "123456":
+                st.session_state['logged_in'] = True
+                st.rerun()
 
-# --- HALAMAN DASHBOARD ---
+# --- HALAMAN UTAMA ---
 def main_dashboard():
-    # Tombol Logout di Sidebar
-    st.sidebar.title(f"👤 User: Admin")
+    st.sidebar.title("👤 Admin Panel")
     if st.sidebar.button("Logout"):
         st.session_state['logged_in'] = False
         st.rerun()
 
-    st.title("🏛️ Dashboard Eksekutif Kepatuhan LHKPN")
-    st.sidebar.divider()
-    
-    # Upload File
-    st.sidebar.header("📁 Manajemen Data")
-    uploaded_file = st.sidebar.file_uploader("Unggah file Excel LHKPN", type=["xlsx"])
+    st.title("🏛️ Dashboard Unifikasi Wajib Lapor LHKPN")
+    uploaded_file = st.sidebar.file_uploader("Unggah Gabungan File Excel", type=["xlsx"])
 
     if uploaded_file:
-        df = pd.read_excel(uploaded_file)
-        df.columns = df.columns.str.strip()
-        df['PREDIKAT'] = df.apply(tentukan_predikat, axis=1)
-
-        # Filter Pencarian Nama (Fitur Tambahan)
-        search_query = st.sidebar.text_input("🔍 Cari Nama Wajib Lapor")
+        raw_df = pd.read_excel(uploaded_file)
         
-        # Filter Bulan
-        list_bulan = ["SEMUA"] + sorted(df['BULAN'].unique().tolist())
-        sel_month = st.sidebar.selectbox("Pilih Bulan Target:", list_bulan)
-        
-        # Filter Logic
-        dff = df
-        if sel_month != "SEMUA":
-            dff = dff[dff['BULAN'] == sel_month]
-        if search_query:
-            dff = dff[dff['NAMA'].str.contains(search_query, case=False, na=False)]
+        # Eksekusi logika pembersihan data ganda
+        df = proses_data_unik(raw_df)
 
-        # --- KPI METRICS ---
-        total = len(dff)
-        hijau = len(dff[dff['PREDIKAT'] == "🟢 ZONA HIJAU"])
-        kuning = len(dff[dff['PREDIKAT'] == "🟡 ZONA KUNING"])
-        merah = len(dff[dff['PREDIKAT'] == "🔴 ZONA MERAH"])
-        hitam = len(dff[dff['PREDIKAT'] == "⚫ ZONA HITAM"])
-        persen = ((total - hitam) / total * 100) if total > 0 else 0
+        # --- Dashboard Metrics ---
+        total_individu = len(df) # Sekarang menghitung NIK unik
+        hijau = len(df[df['PREDIKAT'] == "🟢 ZONA HIJAU"])
+        kuning = len(df[df['PREDIKAT'] == "🟡 ZONA KUNING"])
+        merah = len(df[df['PREDIKAT'] == "🔴 ZONA MERAH"])
+        hitam = len(df[df['PREDIKAT'] == "⚫ ZONA HITAM"])
+        persen = ((total_individu - hitam) / total_individu * 100) if total_individu > 0 else 0
 
+        st.subheader("📊 Statistik Individu Wajib Lapor (Data Unik)")
         m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric("Total WL", f"{total}")
+        m1.metric("Total Individu", f"{total_individu}")
         m2.metric("🟢 Hijau", hijau)
         m3.metric("🟡 Kuning", kuning)
         m4.metric("🔴 Merah", merah)
         m5.metric("⚫ Hitam", hitam, delta_color="inverse")
         m6.metric("Kepatuhan", f"{persen:.1f}%")
 
+        # --- Visualisasi ---
         st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            fig_pie = px.pie(df, names='PREDIKAT', title="Proporsi Predikat Kepatuhan (Individu)",
+                             color='PREDIKAT', color_discrete_map={
+                                 "🟢 ZONA HIJAU": "#2E7D32", "🟡 ZONA KUNING": "#FBC02D",
+                                 "🔴 ZONA MERAH": "#D32F2F", "⚫ ZONA HITAM": "#212121", "⚪ LAINNYA": "#9E9E9E"
+                             })
+            st.plotly_chart(fig_pie, use_container_width=True)
+        
+        with c2:
+            # Tabel Sub-Unit Kritis berdasarkan JUMLAH ORANG, bukan jumlah baris
+            st.write("### 🚨 Sub-Unit Paling Kritis (Hitam)")
+            hitam_df = df[df['PREDIKAT'] == "⚫ ZONA HITAM"]
+            unit_kritis = hitam_df['SUB UNIT KERJA'].value_counts().reset_index()
+            unit_kritis.columns = ['Sub Unit Kerja', 'Jumlah Orang']
+            st.dataframe(unit_kritis, use_container_width=True, height=300)
 
-        # --- ZONA KRITIS ---
-        st.subheader("🚨 Daftar Semua Sub-Unit Kritis (ZONA HITAM)")
-        hitam_df = dff[dff['PREDIKAT'] == "⚫ ZONA HITAM"]
-        if not hitam_df.empty:
-            all_hitam = hitam_df['SUB UNIT KERJA'].value_counts().reset_index()
-            all_hitam.columns = ['Sub Unit Kerja', 'Jumlah Personil Belum Lapor']
-            st.table(all_hitam) # Menggunakan table agar terlihat lebih formal
-        else:
-            st.success("✅ Tidak ada personil di Zona Hitam.")
-
-        # --- LEADERBOARD ---
-        st.subheader("🏆 Leaderboard Sub-Unit (Top 10)")
-        c_h, c_k, c_m = st.columns(3)
-
-        with c_h:
-            st.info("Top 10 Zona Hijau")
-            top_h = dff[dff['PREDIKAT'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().head(10)
-            if not top_h.empty: st.bar_chart(top_h, color="#2E7D32")
-            else: st.write("Data Kosong")
-
-        with c_k:
-            st.warning("Top 10 Zona Kuning")
-            top_k = dff[dff['PREDIKAT'] == "🟡 ZONA KUNING"]['SUB UNIT KERJA'].value_counts().head(10)
-            if not top_k.empty: st.bar_chart(top_k, color="#FBC02D")
-            else: st.write("Data Kosong")
-
-        with c_m:
-            st.error("Top 10 Zona Merah")
-            top_m = dff[dff['PREDIKAT'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().head(10)
-            if not top_m.empty: st.bar_chart(top_m, color="#D32F2F")
-            else: st.write("Data Kosong")
-
-        # --- DETAIL DATA ---
-        with st.expander("🔍 Lihat Detail Data Wajib Lapor"):
-            st.dataframe(dff[['NAMA', 'JABATAN', 'SUB UNIT KERJA', 'PREDIKAT']], use_container_width=True)
+        # --- Leaderboard ---
+        st.divider()
+        st.subheader("🏆 Leaderboard Performa Sub-Unit (Top 10 Orang)")
+        l1, l2, l3 = st.columns(3)
+        with l1:
+            st.success("Top 10 Hijau")
+            st.bar_chart(df[df['PREDIKAT'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().head(10))
+        with l2:
+            st.warning("Top 10 Kuning")
+            st.bar_chart(df[df['PREDIKAT'] == "🟡 ZONA KUNING"]['SUB UNIT KERJA'].value_counts().head(10))
+        with l3:
+            st.error("Top 10 Merah")
+            st.bar_chart(df[df['PREDIKAT'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().head(10))
 
     else:
-        st.info("Silakan unggah file Excel di sidebar untuk memulai.")
+        st.info("Silakan unggah file Excel gabungan Januari-Maret Anda.")
 
-# --- LOGIKA NAVIGASI ---
+# Navigasi
 if st.session_state['logged_in']:
     main_dashboard()
 else:
