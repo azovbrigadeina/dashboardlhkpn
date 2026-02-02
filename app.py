@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# --- 1. CONFIG & THEME ---
+# --- 1. CONFIG & STYLE ---
 st.set_page_config(page_title="LHKPN Universitas Jambi", layout="wide")
 
-# CSS Adaptif agar teks otomatis menyesuaikan (Hitam di terang, Putih di gelap)
 st.markdown("""
     <style>
     .stMetric {
@@ -18,138 +17,131 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIKA PENENTUAN 4 ZONA ---
-def proses_data_lhkpn(df, filter_bulan):
+# --- 2. LOGIKA DATA (NIK CLEANING & 4 ZONA) ---
+def proses_data_unja(df, filter_bulan):
     df.columns = df.columns.str.strip()
-    
-    # Membersihkan NIK dari tanda petik agar deduplikasi akurat
+    # Hapus tanda petik satu pada NIK agar deduplikasi akurat
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True)
     
-    def tentukan_zona(row):
+    def get_zona(row):
         status = str(row['Status LHKPN']).strip()
         bulan = str(row['BULAN']).strip().upper()
-        
-        # 1. ZONA HIJAU (Lengkap di Januari)
-        if status == "Diumumkan Lengkap" and bulan == "JANUARI":
-            return 1, "🟢 ZONA HIJAU"
-        # 2. ZONA KUNING (Verifikasi di Februari)
-        elif status == "Terverifikasi Lengkap" and bulan == "FEBRUARI":
-            return 2, "🟡 ZONA KUNING"
-        # 3. ZONA MERAH (Masih Draft di Maret)
-        elif status == "Draft" and bulan == "MARET":
-            return 3, "🔴 ZONA MERAH"
-        # 4. ZONA HITAM (Belum Lapor sama sekali)
-        elif status == "Belum Lapor":
-            return 5, "⚫ ZONA HITAM"
-        # Lainnya (Status di luar kriteria spesifik)
-        else:
-            return 4, "⚪ LAINNYA"
+        # Logika Predikat
+        if status == "Diumumkan Lengkap" and bulan == "JANUARI": return 1, "🟢 ZONA HIJAU"
+        if status == "Terverifikasi Lengkap" and bulan == "FEBRUARI": return 2, "🟡 ZONA KUNING"
+        if status == "Draft" and bulan == "MARET": return 3, "🔴 ZONA MERAH"
+        if status == "Belum Lapor": return 5, "⚫ ZONA HITAM"
+        return 4, "⚪ LAINNYA"
 
-    # Terapkan ranking untuk mengambil status terbaik saat digabung
-    df['rank'], df['ZONA'] = zip(*df.apply(tentukan_zona, axis=1))
+    df['rank'], df['ZONA'] = zip(*df.apply(get_zona, axis=1))
     
-    # Jika filter bulan dipilih
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     
-    # DEDUPLIKASI: 1 NIK hanya diambil 1 baris dengan ZONA terbaik
-    df_final = df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
-    return df_final
+    # AMBIL 1 NIK 1 STATUS TERBAIK
+    return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
 
-# --- 3. LOGIN SISTEM ---
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
+# --- 3. LOGIN ---
+if 'auth' not in st.session_state:
+    st.session_state['auth'] = False
 
-if not st.session_state['authenticated']:
-    _, col_login, _ = st.columns([1, 1.2, 1])
-    with col_login:
+if not st.session_state['auth']:
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
         st.write("#")
         st.title("Sistem LHKPN UNJA")
-        st.write("Silakan masuk untuk akses dashboard")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.button("Masuk Sekarang", use_container_width=True):
-            if password == "123456":
-                st.session_state['authenticated'] = True
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
+        if st.button("Masuk", use_container_width=True):
+            if p == "123456":
+                st.session_state['auth'] = True
                 st.rerun()
-            else:
-                st.error("Password salah. Gunakan 123456")
+            else: st.error("Salah!")
     st.stop()
 
 # --- 4. DASHBOARD UTAMA ---
 with st.sidebar:
-    st.title("UNJA MONITORING")
-    if st.button("Logout"):
-        st.session_state['authenticated'] = False
+    st.title("UNJA DASHBOARD")
+    if st.button("Log Out"):
+        st.session_state['auth'] = False
         st.rerun()
     st.divider()
-    uploaded_file = st.file_uploader("Upload File Gabungan (Jan-Mar)", type=["xlsx", "csv"])
+    file_upload = st.file_uploader("Upload Database", type=["xlsx", "csv"])
 
-if uploaded_file:
+if file_upload:
     try:
-        # Load Data
-        if uploaded_file.name.endswith('.csv'):
-            df_raw = pd.read_csv(uploaded_file)
+        if file_upload.name.endswith('.csv'):
+            raw = pd.read_csv(file_upload)
         else:
-            df_raw = pd.read_excel(uploaded_file)
+            raw = pd.read_excel(file_upload)
             
-        list_bulan = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in df_raw['BULAN'].unique() if pd.notna(b)])
-        pilihan_bulan = st.sidebar.selectbox("Pilih Periode View:", list_bulan)
+        list_bln = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in raw['BULAN'].unique() if pd.notna(b)])
+        sel_bln = st.sidebar.selectbox("Filter Periode:", list_bln)
         
-        # Proses Unifikasi
-        data = proses_data_lhkpn(df_raw, pilihan_bulan)
+        data = proses_data_unja(raw, sel_bln)
 
-        # UI Header
-        st.title("📊 Dashboard Kepatuhan LHKPN")
-        st.markdown(f"**Universitas Jambi** | Periode: {pilihan_bulan}")
+        # Header
+        st.title("🏛️ Monitoring Kepatuhan LHKPN")
+        st.subheader(f"Universitas Jambi — {sel_bln}")
         st.write("---")
 
-        # Row 1: KPI Metrics
+        # KPI Metrics (4 Zona + Total)
         m1, m2, m3, m4, m5 = st.columns(5)
-        total_orang = len(data)
-        z_hijau = len(data[data['ZONA'] == "🟢 ZONA HIJAU"])
-        z_kuning = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
-        z_merah = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
-        z_hitam = len(data[data['ZONA'] == "⚫ ZONA HITAM"])
-        persen_patuh = ((total_orang - z_hitam) / total_orang * 100) if total_orang > 0 else 0
+        total = len(data)
+        h = len(data[data['ZONA'] == "🟢 ZONA HIJAU"])
+        k = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
+        m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
+        hitam = len(data[data['ZONA'] == "⚫ ZONA HITAM"])
 
-        m1.metric("Wajib Lapor", total_orang)
-        m2.metric("Hijau", z_hijau)
-        m3.metric("Kuning", z_kuning)
-        m4.metric("Merah", z_merah)
-        m5.metric("Hitam", z_hitam)
+        m1.metric("Wajib Lapor", total)
+        m2.metric("🟢 Hijau", h)
+        m3.metric("🟡 Kuning", k)
+        m4.metric("🔴 Merah", m)
+        m5.metric("⚫ Hitam", hitam)
 
         st.write("#")
 
-        # Row 2: Charts
+        # Visualisasi Utama
         col_pie, col_bar = st.columns([1, 1.5])
-        
         with col_pie:
-            st.subheader("Distribusi Zona")
-            fig_pie = px.pie(data, names='ZONA', hole=0.5,
-                             color='ZONA', color_discrete_map={
-                                 "🟢 ZONA HIJAU": "#22C55E", 
-                                 "🟡 ZONA KUNING": "#F59E0B", 
-                                 "🔴 ZONA MERAH": "#EF4444", 
-                                 "⚫ ZONA HITAM": "#475569", 
-                                 "⚪ LAINNYA": "#94A3B8"})
-            fig_pie.update_layout(showlegend=True, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig_pie, use_container_width=True)
-
+            st.markdown("### Komposisi Kepatuhan")
+            fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
+                         color_discrete_map={
+                             "🟢 ZONA HIJAU":"#22C55E", "🟡 ZONA KUNING":"#F59E0B", 
+                             "🔴 ZONA MERAH":"#EF4444", "⚫ ZONA HITAM":"#64748B", "⚪ LAINNYA":"#94A3B8"})
+            st.plotly_chart(fig, use_container_width=True)
+        
         with col_bar:
-            st.subheader("Unit Kerja Paling Kritis (Zona Hitam)")
+            st.markdown("### 🚨 Unit Kerja Kritis (Zona Hitam)")
             df_hitam = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
-            df_hitam.columns = ['Unit', 'Jumlah']
-            fig_bar = px.bar(df_hitam, x='Jumlah', y='Unit', orientation='h', color_discrete_sequence=['#475569'])
+            df_hitam.columns = ['Unit Kerja', 'Jumlah']
+            fig_bar = px.bar(df_hitam, x='Jumlah', y='Unit Kerja', orientation='h', color_discrete_sequence=['#64748B'])
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        # Row 3: Detail Data
+        # --- PERINGKAT LEADERSHIP (UNIT KERJA) ---
         st.divider()
-        with st.expander("🔍 Klik untuk melihat Detail Nama dan Predikat"):
-            st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'BULAN', 'ZONA']], 
+        st.markdown("### 🏆 Peringkat Kepemimpinan Unit Kerja")
+        l1, l2 = st.columns(2)
+        
+        with l1:
+            st.markdown("<h5 style='color: #22C55E;'>Top 5 Unit Kerja Patuh (Zona Hijau)</h5>", unsafe_allow_html=True)
+            leader_h = data[data['ZONA'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().reset_index()
+            leader_h.columns = ['Unit Kerja', 'Jumlah Personil']
+            st.dataframe(leader_h.head(5), use_container_width=True, hide_index=True)
+
+        with l2:
+            st.markdown("<h5 style='color: #EF4444;'>5 Unit Kerja Terbanyak Belum Lapor (Hitam)</h5>", unsafe_allow_html=True)
+            leader_hitam = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index()
+            leader_hitam.columns = ['Unit Kerja', 'Jumlah Personil']
+            st.dataframe(leader_hitam.head(5), use_container_width=True, hide_index=True)
+
+        # Detail Data
+        st.write("#")
+        with st.expander("🔍 Detail Seluruh Nama Wajib Lapor"):
+            st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], 
                          use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Error: Pastikan kolom file sesuai. Detail: {e}")
+        st.error(f"Error: {e}")
 else:
-    st.info("👋 Selamat Datang. Silakan unggah file database di sidebar.")
+    st.info("Silakan unggah file database untuk melihat peringkat kepemimpinan.")
