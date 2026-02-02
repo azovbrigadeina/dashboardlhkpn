@@ -1,50 +1,55 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Dashboard Zona LHKPN", layout="wide")
+st.set_page_config(page_title="Zona Kepatuhan LHKPN", layout="wide")
 
-# Judul utama sesuai contoh Anda
-st.markdown("<h2 style='text-align: center; color: #1E88E5;'>Predikat Zona Kepatuhan (dirangking)</h2>", unsafe_allow_html=True)
+st.markdown(
+    "<h2 style='text-align: center; color: #1976D2; margin-bottom: 30px;'>"
+    "Predikat Zona Kepatuhan (dirangking)"
+    "</h2>",
+    unsafe_allow_html=True
+)
 
 uploaded_file = st.file_uploader("Unggah file XLS/XLSX LHKPN", type=['xls', 'xlsx'])
 
-if uploaded_file:
+if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
     df.columns = df.columns.str.strip()
-    df['BULAN'] = df['BULAN'].str.strip().str.capitalize()
+    df['BULAN'] = df['BULAN'].astype(str).str.strip().str.capitalize()
 
-    def get_predikat(row):
-        s = str(row['Status LHKPN']).strip()
-        b = row['BULAN']
-        if s == 'Diumumkan Lengkap' and b == 'Januari': return 'Hijau'
-        if s == 'Terverifikasi Lengkap' and b == 'Februari': return 'Kuning'
-        if s == 'Draft' and b == 'Maret': return 'Merah'
-        if s == 'Belum lapor': return 'Hitam'
+    def tentukan_predikat(row):
+        status = str(row['Status LHKPN']).strip()
+        bulan = row['BULAN']
+        if status == 'Diumumkan Lengkap' and bulan == 'Januari':
+            return 'Hijau'
+        if status == 'Terverifikasi Lengkap' and bulan == 'Februari':
+            return 'Kuning'
+        if status == 'Draft' and bulan == 'Maret':
+            return 'Merah'
+        if status == 'Belum lapor':
+            return 'Hitam'
         return 'Lainnya'
 
-    df['Predikat'] = df.apply(get_predikat, axis=1)
+    df['Predikat'] = df.apply(tentukan_predikat, axis=1)
 
-    view = st.selectbox("Pilih Periode", ["Januari", "Februari", "Maret", "Global (kumulatif)"])
+    periode = st.selectbox(
+        "Pilih Periode",
+        ["Januari", "Februari", "Maret", "Global (kumulatif Jan-Feb-Mar)"],
+        index=3
+    )
 
-    if view == "Global":
-        df_f = df[df['BULAN'].isin(['Januari', 'Februari', 'Maret'])]
+    if periode == "Global (kumulatif Jan-Feb-Mar)":
+        df_filter = df[df['BULAN'].isin(['Januari', 'Februari', 'Maret'])]
     else:
-        df_f = df[df['BULAN'] == view]
+        df_filter = df[df['BULAN'] == periode]
 
-    if df_f.empty:
-        st.warning(f"Tidak ada data untuk periode {view}")
+    if df_filter.empty:
+        st.warning(f"Tidak ada data untuk periode {periode}")
     else:
-        # Hitung predikat dominan per Sub Unit Kerja (yang terbanyak)
-        grouped = df_f.groupby(['SUB UNIT KERJA', 'Predikat']).size().unstack(fill_value=0)
-        dominant = {}
-        for sub, row in grouped.iterrows():
-            if row.sum() == 0:
-                dominant[sub] = "Lainnya"
-            else:
-                dominant[sub] = row.idxmax()   # predikat dengan jumlah terbanyak
-
-        # Buat dataframe per zona
-        zona_data = {
+        # Hitung predikat dominan per Sub Unit Kerja (yang paling banyak)
+        grouped = df_filter.groupby(['SUB UNIT KERJA', 'Predikat']).size().unstack(fill_value=0)
+        
+        zona_dict = {
             'Hijau': [],
             'Kuning': [],
             'Merah': [],
@@ -52,43 +57,50 @@ if uploaded_file:
             'Lainnya': []
         }
 
-        for sub, z in dominant.items():
-            if z in zona_data:
-                zona_data[z].append(sub)
+        for subunit, row in grouped.iterrows():
+            if row.sum() == 0:
+                zona_dict['Lainnya'].append(subunit)
+            else:
+                pred_dominan = row.idxmax()
+                zona_dict[pred_dominan].append(subunit)
 
-        # Urutkan alfabetis tiap zona (bisa diganti kriteria lain)
-        for z in zona_data:
-            zona_data[z].sort()
+        # Urutkan alfabetis tiap zona
+        for z in zona_dict:
+            zona_dict[z].sort()
 
-        # Warna untuk tiap zona
-        warna_zona = {
-            'Hijau': '#4CAF50',
-            'Kuning': '#FFC107',
-            'Merah': '#F44336',
+        # Warna untuk judul zona
+        warna = {
+            'Hijau': '#2E7D32',
+            'Kuning': '#F9A825',
+            'Merah': '#C62828',
             'Hitam': '#212121',
-            'Lainnya': '#757575'
+            'Lainnya': '#616161'
         }
 
-        # Tampilkan per zona seperti tabel yang Anda inginkan
-        for zona, units in zona_data.items():
-            if not units:
+        # Tampilkan per zona dengan format tabel seperti contoh
+        for zona_name, daftar_unit in zona_dict.items():
+            if not daftar_unit:
                 continue
 
-            st.markdown(f"<h3 style='color: {warna_zona.get(zona, '#000000')};'>{zona}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color: {warna.get(zona_name, '#000')}; margin-top: 30px;'>{zona_name}</h3>", unsafe_allow_html=True)
 
-            # Buat dataframe untuk tabel
-            df_zona = pd.DataFrame({
-                'No': range(1, len(units) + 1),
-                'Sub Unit Kerja': units
-            })
+            data_tabel = {
+                'No': list(range(1, len(daftar_unit) + 1)),
+                'Sub Unit Kerja': daftar_unit
+            }
 
-            # Tampilkan tabel tanpa index
-            st.table(df_zona.style.set_properties(**{
-                'text-align': 'left',
-                'font-size': '14px'
-            }))
+            df_tabel = pd.DataFrame(data_tabel)
 
-            st.markdown("---")  # garis pemisah antar zona
+            # Tampilkan tabel dengan style minimalis
+            st.table(
+                df_tabel.style
+                .set_properties(**{'text-align': 'left', 'padding': '8px'})
+                .set_table_styles([
+                    {'selector': 'th', 'props': [('background-color', '#f5f5f5'), ('font-weight', 'bold')]},
+                    {'selector': 'td, th', 'props': [('border', '1px solid #ddd')]}
+                ])
+            )
 
-        # Info tambahan kecil di bawah
-        st.caption(f"Data diolah untuk periode: {view} | Total Sub Unit: {len(dominant)} | Tanggal proses: {pd.Timestamp.now().strftime('%d %b %Y %H:%M')}")
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        st.caption(f"Periode: {periode} | Total Sub Unit Kerja: {len(grouped)} | Diolah pada: {pd.Timestamp.now().strftime('%d %b %Y %H:%M WIB')}")
