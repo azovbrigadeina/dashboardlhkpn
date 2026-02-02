@@ -13,7 +13,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIN ---
+# --- 2. LOGIN (CENTERED) ---
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
     _, col_login, _ = st.columns([1, 1.2, 1])
@@ -21,7 +21,7 @@ if not st.session_state['auth']:
         st.write("#")
         st.markdown("<h1 style='text-align: center;'>🏛️ LHKPN UNJA</h1>", unsafe_allow_html=True)
         pw = st.text_input("Password", type="password")
-        if st.button("Masuk", use_container_width=True):
+        if st.button("Masuk", width='stretch'):
             if pw == "123456": st.session_state['auth'] = True; st.rerun()
     st.stop()
 
@@ -44,7 +44,7 @@ def proses_data_unja(df, filter_bulan):
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
 
-# --- 4. STYLE FUNCTION FOR HIGHLIGHT ---
+# --- 4. STYLE FUNCTION (MODERN MAP) ---
 def highlight_zona(val):
     color = ''
     if val == 'HIJAU': color = 'background-color: #22C55E; color: white; font-weight: bold;'
@@ -84,22 +84,22 @@ if file:
     c1, c2 = st.columns([1, 1.5])
     with c1:
         fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA', color_discrete_map={"HIJAU":"#22C55E", "KUNING":"#F59E0B", "MERAH":"#EF4444", "HITAM":"#475569"})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     with c2:
         hitam_count = data[data['ZONA'] == "HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
         st.bar_chart(hitam_count.set_index('SUB UNIT KERJA'), color="#475569")
 
-    # --- TABLES WITH HIGHLIGHT ---
+    # --- TABLES WITH NEW STYLE MAP ---
     st.divider()
     st.subheader("🏆 Peringkat Kepemimpinan & Detail")
     
-    # Detail Tabel dengan Highlight pada kolom ZONA
     df_view = data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']].reset_index(drop=True)
     
-    # Menerapkan Style Highlight
+    # PERBAIKAN: Gunakan .map() sebagai pengganti .applymap()
+    # PERBAIKAN: Gunakan width='stretch' sebagai pengganti use_container_width=True
     st.dataframe(
-        df_view.style.applymap(highlight_zona, subset=['ZONA']),
-        use_container_width=True,
+        df_view.style.map(highlight_zona, subset=['ZONA']),
+        width='stretch',
         hide_index=True
     )
 
