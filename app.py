@@ -107,38 +107,41 @@ if file_upload:
         </div>
         """, unsafe_allow_html=True)
 
-        # Visualisasi
+        # Visualisasi dengan Judul
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
+                         title="<b>Persentase Sebaran Zona</b>",
                          color_discrete_map={"🟢 ZONA HIJAU":"#22C55E", "🟡 ZONA KUNING":"#F59E0B", 
                                              "🔴 ZONA MERAH":"#EF4444", "⚫ ZONA HITAM":"#64748B", "⚪ LAINNYA":"#94A3B8"})
-            fig.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0))
+            fig.update_layout(height=350, margin=dict(t=50, b=0, l=0, r=0), title_x=0.5)
             st.plotly_chart(fig, use_container_width=True)
+            
         with c2:
             df_hitam = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
             df_hitam.columns = ['Unit Kerja', 'Jumlah']
-            fig_bar = px.bar(df_hitam, x='Jumlah', y='Unit Kerja', orientation='h', color_discrete_sequence=['#64748B'])
-            fig_bar.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0))
+            fig_bar = px.bar(df_hitam, x='Jumlah', y='Unit Kerja', orientation='h', 
+                             title="<b>10 Unit Kerja Terbanyak (Zona Hitam)</b>",
+                             color_discrete_sequence=['#64748B'])
+            fig_bar.update_layout(height=350, margin=dict(t=50, b=20, l=0, r=20), title_x=0.5)
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        # --- PERINGKAT LEADERSHIP (SMALL DIMENSION) ---
+        # --- PERINGKAT LEADERSHIP ---
         st.divider()
         st.markdown("### 🏆 Peringkat Kepemimpinan Unit Kerja")
         l1, l2 = st.columns(2)
         with l1:
             st.markdown("<h6 style='color: #22C55E;'>Top 5 Unit Kerja Patuh (Zona Hijau)</h6>", unsafe_allow_html=True)
             leader_h = data[data['ZONA'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().reset_index().head(5)
-            st.dataframe(leader_h, use_container_width=True, hide_index=True, height=200)
+            st.dataframe(leader_h, use_container_width=True, hide_index=True, height=210)
         with l2:
             st.markdown("<h6 style='color: #EF4444;'>5 Unit Kerja Terbanyak Belum Lapor (Hitam)</h6>", unsafe_allow_html=True)
             leader_hitam = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(5)
-            st.dataframe(leader_hitam, use_container_width=True, hide_index=True, height=200)
+            st.dataframe(leader_hitam, use_container_width=True, hide_index=True, height=210)
 
         # Detail Data with Highlight
         with st.expander("🔍 Detail Seluruh Nama Wajib Lapor"):
             df_final = data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']]
-            # Menggunakan .map() agar kompatibel dengan Pandas terbaru
             st.dataframe(df_final.style.map(style_zona, subset=['ZONA']), use_container_width=True, hide_index=True)
 
     except Exception as e:
