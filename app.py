@@ -13,7 +13,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIN (CENTERED) ---
+# --- 2. LOGIN ---
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
     _, col_login, _ = st.columns([1, 1.2, 1])
@@ -33,18 +33,27 @@ def proses_data_unja(df, filter_bulan):
     def get_zona(row):
         status = str(row['Status LHKPN']).strip()
         bulan = str(row['BULAN']).strip().upper()
-        if status == "Diumumkan Lengkap" and bulan == "JANUARI": return 1, "🟢 HIJAU"
-        if status == "Terverifikasi Lengkap" and bulan == "FEBRUARI": return 2, "🟡 KUNING"
-        if status == "Draft" and bulan == "MARET": return 3, "🔴 MERAH"
-        if status == "Belum Lapor": return 5, "⚫ HITAM"
-        return 4, "⚪ LAINNYA"
+        if status == "Diumumkan Lengkap" and bulan == "JANUARI": return 1, "HIJAU"
+        if status == "Terverifikasi Lengkap" and bulan == "FEBRUARI": return 2, "KUNING"
+        if status == "Draft" and bulan == "MARET": return 3, "MERAH"
+        if status == "Belum Lapor": return 5, "HITAM"
+        return 4, "LAINNYA"
 
     df['rank'], df['ZONA'] = zip(*df.apply(get_zona, axis=1))
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
 
-# --- 4. MAIN DASHBOARD ---
+# --- 4. STYLE FUNCTION FOR HIGHLIGHT ---
+def highlight_zona(val):
+    color = ''
+    if val == 'HIJAU': color = 'background-color: #22C55E; color: white; font-weight: bold;'
+    elif val == 'KUNING': color = 'background-color: #F59E0B; color: white; font-weight: bold;'
+    elif val == 'MERAH': color = 'background-color: #EF4444; color: white; font-weight: bold;'
+    elif val == 'HITAM': color = 'background-color: #475569; color: white; font-weight: bold;'
+    return color
+
+# --- 5. MAIN DASHBOARD ---
 with st.sidebar:
     st.title("UNJA MONITORING")
     if st.button("Logout"): st.session_state['auth'] = False; st.rerun()
@@ -59,61 +68,40 @@ if file:
 
     # Metrics
     m1, m2, m3, m4, m5 = st.columns(5)
-    h = len(data[data['ZONA'] == "🟢 HIJAU"])
-    k = len(data[data['ZONA'] == "🟡 KUNING"])
-    m = len(data[data['ZONA'] == "🔴 MERAH"])
-    hitam = len(data[data['ZONA'] == "⚫ HITAM"])
+    h = len(data[data['ZONA'] == "HIJAU"])
+    k = len(data[data['ZONA'] == "KUNING"])
+    m = len(data[data['ZONA'] == "MERAH"])
+    hitam = len(data[data['ZONA'] == "HITAM"])
     
     m1.metric("Wajib Lapor", len(data))
     m2.metric("🟢 Hijau", h); m3.metric("🟡 Kuning", k); m4.metric("🔴 Merah", m); m5.metric("⚫ Hitam", hitam)
 
     # Recommendation Box
-    unit_kritis = data[data['ZONA'] == "⚫ HITAM"]['SUB UNIT KERJA'].value_counts().index[0] if hitam > 0 else "-"
+    unit_kritis = data[data['ZONA'] == "HITAM"]['SUB UNIT KERJA'].value_counts().index[0] if hitam > 0 else "-"
     st.markdown(f"""<div class="recom-box"><h4>📝 Rekomendasi Naratif</h4><p>Prioritas utama: Tindak lanjut unit <b>{unit_kritis}</b> dan asistensi <b>{m} orang</b> di Zona Merah agar segera menyelesaikan laporan.</p></div>""", unsafe_allow_html=True)
 
-    # Charts Row
+    # Charts
     c1, c2 = st.columns([1, 1.5])
     with c1:
-        fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA', color_discrete_map={"🟢 HIJAU":"#22C55E", "🟡 KUNING":"#F59E0B", "🔴 MERAH":"#EF4444", "⚫ HITAM":"#64748B"})
+        fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA', color_discrete_map={"HIJAU":"#22C55E", "KUNING":"#F59E0B", "MERAH":"#EF4444", "HITAM":"#475569"})
         st.plotly_chart(fig, use_container_width=True)
     with c2:
-        hitam_count = data[data['ZONA'] == "⚫ HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
-        st.bar_chart(hitam_count.set_index('SUB UNIT KERJA'), color="#64748B")
+        hitam_count = data[data['ZONA'] == "HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
+        st.bar_chart(hitam_count.set_index('SUB UNIT KERJA'), color="#475569")
 
-    # --- LEADERBOARD DENGAN PENANDA WARNA ---
+    # --- TABLES WITH HIGHLIGHT ---
     st.divider()
-    st.subheader("🏆 Peringkat Kepemimpinan Unit Kerja")
-    l1, l2 = st.columns(2)
+    st.subheader("🏆 Peringkat Kepemimpinan & Detail")
     
-    with l1:
-        st.markdown("✅ **Unit Kerja Terpatuh**")
-        df_l1 = data[data['ZONA'] == "🟢 HIJAU"]['SUB UNIT KERJA'].value_counts().reset_index()
-        df_l1.columns = ['Unit Kerja', 'Jumlah Personil']
-        # Menggunakan data_editor atau dataframe dengan column_config untuk warna
-        st.dataframe(df_l1.head(5), use_container_width=True, hide_index=True)
-
-    with l2:
-        st.markdown("🚨 **Unit Kerja Perhatian**")
-        df_l2 = data[data['ZONA'] == "⚫ HITAM"]['SUB UNIT KERJA'].value_counts().reset_index()
-        df_l2.columns = ['Unit Kerja', 'Jumlah Personil']
-        st.dataframe(df_l2.head(5), use_container_width=True, hide_index=True)
-
-    # --- TABEL DETAIL DENGAN WARNA ---
-    st.write("#")
-    with st.expander("🔍 Lihat Detail Data Individu"):
-        # Penanda warna menggunakan simbol emoji yang menyatu dengan teks zona
-        st.dataframe(
-            data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "ZONA": st.column_config.TextColumn(
-                    "Status Zona",
-                    help="Kategori Kepatuhan",
-                    width="medium",
-                )
-            }
-        )
+    # Detail Tabel dengan Highlight pada kolom ZONA
+    df_view = data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']].reset_index(drop=True)
+    
+    # Menerapkan Style Highlight
+    st.dataframe(
+        df_view.style.applymap(highlight_zona, subset=['ZONA']),
+        use_container_width=True,
+        hide_index=True
+    )
 
 else:
     st.info("Silakan unggah data di sidebar.")
