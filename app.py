@@ -2,11 +2,20 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Konfigurasi Halaman
-st.set_page_config(page_title="LHKPN Executive Dashboard", layout="wide")
+# 1. Konfigurasi Halaman & Styling
+st.set_page_config(page_title="Sistem Monitoring LHKPN", layout="wide")
 
-st.title("🏛️ Dashboard Kepatuhan LHKPN (Pimpinan View)")
-st.markdown("Analisis real-time berdasarkan predikat kepatuhan sub-unit kerja.")
+# Custom CSS agar halaman login di tengah
+st.markdown("""
+    <style>
+    .login-box {
+        background-color: #f0f2f6;
+        padding: 30px;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # 2. Fungsi Logika Predikat
 def tentukan_predikat(row):
@@ -24,87 +33,122 @@ def tentukan_predikat(row):
     else:
         return "⚪ LAINNYA"
 
-# 3. Sidebar: Upload & Filter
-st.sidebar.header("📁 Manajemen Data")
-uploaded_file = st.sidebar.file_uploader("Unggah file Excel LHKPN", type=["xlsx"])
+# 3. Inisialisasi Session State untuk Login
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
 
-if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    df.columns = df.columns.str.strip()
-    df['PREDIKAT'] = df.apply(tentukan_predikat, axis=1)
+# --- HALAMAN LOGIN ---
+def login_page():
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.write("") 
+        st.write("") 
+        st.markdown("<h1 style='text-align: center;'>🔐 Login Sistem LHKPN</h1>", unsafe_allow_html=True)
+        with st.container():
+            username = st.text_input("Username", placeholder="Masukkan username bebas...")
+            password = st.text_input("Password", type="password", placeholder="Masukkan 123456")
+            
+            if st.button("Masuk Sekarang", use_container_width=True):
+                if password == "123456":
+                    st.session_state['logged_in'] = True
+                    st.success("Login Berhasil! Mengalihkan...")
+                    st.rerun()
+                else:
+                    st.error("Password salah! Coba lagi.")
 
-    # Filter Bulan
-    list_bulan = ["SEMUA"] + sorted(df['BULAN'].unique().tolist())
-    sel_month = st.sidebar.selectbox("Pilih Bulan Target:", list_bulan)
+# --- HALAMAN DASHBOARD ---
+def main_dashboard():
+    # Tombol Logout di Sidebar
+    st.sidebar.title(f"👤 User: Admin")
+    if st.sidebar.button("Logout"):
+        st.session_state['logged_in'] = False
+        st.rerun()
+
+    st.title("🏛️ Dashboard Eksekutif Kepatuhan LHKPN")
+    st.sidebar.divider()
     
-    dff = df if sel_month == "SEMUA" else df[df['BULAN'] == sel_month]
+    # Upload File
+    st.sidebar.header("📁 Manajemen Data")
+    uploaded_file = st.sidebar.file_uploader("Unggah file Excel LHKPN", type=["xlsx"])
 
-    # --- BAGIAN 1: METRIC CARDS (KPI) ---
-    st.subheader("📌 Ringkasan Statistik Global")
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    
-    total = len(dff)
-    hijau = len(dff[dff['PREDIKAT'] == "🟢 ZONA HIJAU"])
-    kuning = len(dff[dff['PREDIKAT'] == "🟡 ZONA KUNING"])
-    merah = len(dff[dff['PREDIKAT'] == "🔴 ZONA MERAH"])
-    hitam = len(dff[dff['PREDIKAT'] == "⚫ ZONA HITAM"])
-    persen = ((total - hitam) / total * 100) if total > 0 else 0
+    if uploaded_file:
+        df = pd.read_excel(uploaded_file)
+        df.columns = df.columns.str.strip()
+        df['PREDIKAT'] = df.apply(tentukan_predikat, axis=1)
 
-    m1.metric("Total WL", f"{total}")
-    m2.metric("🟢 Hijau", hijau)
-    m3.metric("🟡 Kuning", kuning)
-    m4.metric("🔴 Merah", merah)
-    m5.metric("⚫ Hitam", hitam, delta_color="inverse")
-    m6.metric("Kepatuhan", f"{persen:.1f}%")
+        # Filter Pencarian Nama (Fitur Tambahan)
+        search_query = st.sidebar.text_input("🔍 Cari Nama Wajib Lapor")
+        
+        # Filter Bulan
+        list_bulan = ["SEMUA"] + sorted(df['BULAN'].unique().tolist())
+        sel_month = st.sidebar.selectbox("Pilih Bulan Target:", list_bulan)
+        
+        # Filter Logic
+        dff = df
+        if sel_month != "SEMUA":
+            dff = dff[dff['BULAN'] == sel_month]
+        if search_query:
+            dff = dff[dff['NAMA'].str.contains(search_query, case=False, na=False)]
 
-    st.divider()
+        # --- KPI METRICS ---
+        total = len(dff)
+        hijau = len(dff[dff['PREDIKAT'] == "🟢 ZONA HIJAU"])
+        kuning = len(dff[dff['PREDIKAT'] == "🟡 ZONA KUNING"])
+        merah = len(dff[dff['PREDIKAT'] == "🔴 ZONA MERAH"])
+        hitam = len(dff[dff['PREDIKAT'] == "⚫ ZONA HITAM"])
+        persen = ((total - hitam) / total * 100) if total > 0 else 0
 
-    # --- BAGIAN 2: DAFTAR UNIT KRITIS (ZONA HITAM) ---
-    st.subheader("🚨 Daftar Semua Sub-Unit Kritis (ZONA HITAM)")
-    st.write("Daftar ini menampilkan semua unit yang memiliki 'Belum Lapor' untuk segera ditindaklanjuti.")
-    
-    hitam_df = dff[dff['PREDIKAT'] == "⚫ ZONA HITAM"]
-    if not hitam_df.empty:
-        # Menghitung semua unit di zona hitam
-        all_hitam = hitam_df['SUB UNIT KERJA'].value_counts().reset_index()
-        all_hitam.columns = ['Sub Unit Kerja', 'Jumlah Belum Lapor']
-        st.dataframe(all_hitam, use_container_width=True)
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("Total WL", f"{total}")
+        m2.metric("🟢 Hijau", hijau)
+        m3.metric("🟡 Kuning", kuning)
+        m4.metric("🔴 Merah", merah)
+        m5.metric("⚫ Hitam", hitam, delta_color="inverse")
+        m6.metric("Kepatuhan", f"{persen:.1f}%")
+
+        st.divider()
+
+        # --- ZONA KRITIS ---
+        st.subheader("🚨 Daftar Semua Sub-Unit Kritis (ZONA HITAM)")
+        hitam_df = dff[dff['PREDIKAT'] == "⚫ ZONA HITAM"]
+        if not hitam_df.empty:
+            all_hitam = hitam_df['SUB UNIT KERJA'].value_counts().reset_index()
+            all_hitam.columns = ['Sub Unit Kerja', 'Jumlah Personil Belum Lapor']
+            st.table(all_hitam) # Menggunakan table agar terlihat lebih formal
+        else:
+            st.success("✅ Tidak ada personil di Zona Hitam.")
+
+        # --- LEADERBOARD ---
+        st.subheader("🏆 Leaderboard Sub-Unit (Top 10)")
+        c_h, c_k, c_m = st.columns(3)
+
+        with c_h:
+            st.info("Top 10 Zona Hijau")
+            top_h = dff[dff['PREDIKAT'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().head(10)
+            if not top_h.empty: st.bar_chart(top_h, color="#2E7D32")
+            else: st.write("Data Kosong")
+
+        with c_k:
+            st.warning("Top 10 Zona Kuning")
+            top_k = dff[dff['PREDIKAT'] == "🟡 ZONA KUNING"]['SUB UNIT KERJA'].value_counts().head(10)
+            if not top_k.empty: st.bar_chart(top_k, color="#FBC02D")
+            else: st.write("Data Kosong")
+
+        with c_m:
+            st.error("Top 10 Zona Merah")
+            top_m = dff[dff['PREDIKAT'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().head(10)
+            if not top_m.empty: st.bar_chart(top_m, color="#D32F2F")
+            else: st.write("Data Kosong")
+
+        # --- DETAIL DATA ---
+        with st.expander("🔍 Lihat Detail Data Wajib Lapor"):
+            st.dataframe(dff[['NAMA', 'JABATAN', 'SUB UNIT KERJA', 'PREDIKAT']], use_container_width=True)
+
     else:
-        st.success("Hebat! Tidak ada sub-unit di Zona Hitam.")
+        st.info("Silakan unggah file Excel di sidebar untuk memulai.")
 
-    st.divider()
-
-    # --- BAGIAN 3: LEADERBOARD 10 BESAR PER ZONA ---
-    st.subheader("🏆 Leaderboard Sub-Unit Berdasarkan Zona")
-    col_h, col_k, col_m = st.columns(3)
-
-    with col_h:
-        st.markdown("### 10 Besar Zona Hijau")
-        top_h = dff[dff['PREDIKAT'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().head(10)
-        if not top_h.empty:
-            st.bar_chart(top_h, color="#2E7D32")
-        else:
-            st.write("Belum ada data.")
-
-    with col_k:
-        st.markdown("### 10 Besar Zona Kuning")
-        top_k = dff[dff['PREDIKAT'] == "🟡 ZONA KUNING"]['SUB UNIT KERJA'].value_counts().head(10)
-        if not top_k.empty:
-            st.bar_chart(top_k, color="#FBC02D")
-        else:
-            st.write("Belum ada data.")
-
-    with col_m:
-        st.markdown("### 10 Besar Zona Merah")
-        top_m = dff[dff['PREDIKAT'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().head(10)
-        if not top_m.empty:
-            st.bar_chart(top_m, color="#D32F2F")
-        else:
-            st.write("Belum ada data.")
-
-    # --- BAGIAN 4: DETAIL DATA ---
-    with st.expander("🔍 Lihat Detail Data Mentah"):
-        st.dataframe(dff[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'PREDIKAT']])
-
+# --- LOGIKA NAVIGASI ---
+if st.session_state['logged_in']:
+    main_dashboard()
 else:
-    st.info("Silakan unggah file Excel di sidebar untuk memproses dashboard.")
+    login_page()
