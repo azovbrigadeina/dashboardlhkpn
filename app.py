@@ -1,143 +1,104 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-st.set_page_config(page_title="Dashboard Zona Kepatuhan LHKPN", layout="wide")
+# 1. Konfigurasi Halaman
+st.set_page_config(page_title="LHKPN Monitoring Dashboard", layout="wide")
 
-# Judul utama
-st.markdown(
-    "<h2 style='text-align: center; color: #1976D2; margin-bottom: 30px;'>"
-    "Predikat Zona Kepatuhan (dirangking)"
-    "</h2>",
-    unsafe_allow_html=True
-)
-
-uploaded_file = st.file_uploader("Unggah file XLS/XLSX LHKPN", type=['xls', 'xlsx'])
-
-if uploaded_file is not None:
-    try:
-        df = pd.read_excel(uploaded_file)
-        df.columns = df.columns.str.strip()
-
-        # Normalisasi kolom penting (trim spasi & ubah ke title case)
-        if 'BULAN' in df.columns:
-            df['BULAN'] = df['BULAN'].astype(str).str.strip().str.title()
-        if 'Status LHKPN' in df.columns:
-            df['Status LHKPN'] = df['Status LHKPN'].astype(str).str.strip().str.title()
-
-        # Fungsi predikat dengan toleransi lebih baik
-        def tentukan_predikat(row):
-            status = str(row.get('Status LHKPN', '')).strip().title()
-            bulan = str(row.get('BULAN', '')).strip().title()
-
-            if 'Diumumkan Lengkap' in status and bulan == 'Januari':
-                return 'Hijau'
-            if 'Terverifikasi Lengkap' in status and bulan == 'Februari':
-                return 'Kuning'
-            if 'Draft' in status and bulan == 'Maret':
-                return 'Merah'
-            if 'Belum' in status and 'Lapor' in status:
-                return 'Hitam'
-            return 'Lainnya'
-
-        df['Predikat'] = df.apply(tentukan_predikat, axis=1)
-
-        # --- DEBUG: Tampilkan info data untuk cek kenapa Lainnya ---
-        with st.expander("🔍 Debug: Cek Data & Unique Values (klik untuk buka)"):
-            st.subheader("5 Baris Pertama Data Penting")
-            cols_debug = ['SUB UNIT KERJA', 'Status LHKPN', 'BULAN', 'Predikat']
-            if all(c in df.columns for c in cols_debug):
-                st.dataframe(df[cols_debug].head(10))
-            else:
-                st.warning("Beberapa kolom tidak ditemukan. Pastikan ada: SUB UNIT KERJA, Status LHKPN, BULAN")
-
-            st.subheader("Nilai Unik yang Ada")
-            st.write("Status LHKPN unik:", df['Status LHKPN'].unique().tolist())
-            st.write("BULAN unik:", df['BULAN'].unique().tolist())
-            st.write("Predikat unik (setelah diproses):", df['Predikat'].unique().tolist())
-            st.write(f"Total baris data: {len(df)}")
-
-        # Pilih periode
-        periode = st.selectbox(
-            "Pilih Periode",
-            ["Januari", "Februari", "Maret", "Global (kumulatif Jan-Feb-Mar)"],
-            index=3
-        )
-
-        if periode == "Global (kumulatif Jan-Feb-Mar)":
-            df_filter = df[df['BULAN'].isin(['Januari', 'Februari', 'Maret'])]
+# 2. Fungsi Load Data & Logika Predikat
+@st.cache_data
+def load_data():
+    # Mengasumsikan file csv ada di direktori yang sama
+    df = pd.read_csv('GLOBAl.xlsx - Daftar Wajib Lapor.csv')
+    df.columns = df.columns.str.strip()
+    
+    # Fungsi Logika Predikat Kepatuhan
+    def tentukan_predikat(row):
+        status = str(row['Status LHKPN']).strip()
+        bulan = str(row['BULAN']).strip().lower()
+        
+        if status == "Diumumkan Lengkap" and bulan == "januari":
+            return "🟢 ZONA HIJAU"
+        elif status == "Terverifikasi Lengkap" and bulan == "februari":
+            return "🟡 ZONA KUNING"
+        elif status == "Draft" and bulan == "maret":
+            return "🔴 ZONA MERAH"
+        elif status == "Belum Lapor":
+            return "⚫ ZONA HITAM"
         else:
-            df_filter = df[df['BULAN'] == periode]
+            return "⚪ LAINNYA"
 
-        if df_filter.empty:
-            st.error(f"Tidak ada data untuk periode '{periode}'. Cek kolom BULAN di file Anda.")
-        else:
-            # Hitung jumlah per predikat per sub unit
-            grouped = df_filter.groupby(['SUB UNIT KERJA', 'Predikat']).size().unstack(fill_value=0)
+    df['PREDIKAT'] = df.apply(tentukan_predikat, axis=1)
+    return df
 
-            # Tentukan zona dominan
-            zona_dict = {'Hijau': [], 'Kuning': [], 'Merah': [], 'Hitam': [], 'Lainnya': []}
+df = load_data()
 
-            for subunit, row in grouped.iterrows():
-                if row.sum() == 0:
-                    zona_dict['Lainnya'].append(subunit)
-                else:
-                    pred_dominan = row.idxmax()
-                    zona_dict[pred_dominan].append(subunit)
+# 3. Sidebar untuk Filter
+st.sidebar.title("🎛️ Panel Kendali Pimpinan")
+st.sidebar.markdown("Filter data di bawah ini:")
 
-            # Sort alfabetis tiap zona
-            for z in zona_dict:
-                zona_dict[z].sort()
+# Filter Global vs Per Bulan
+mode_view = st.sidebar.selectbox("Pilih Mode Tampilan:", ["Global", "Per Bulan"])
 
-            # Warna judul zona
-            warna_zona = {
-                'Hijau': '#2E7D32',    # hijau gelap
-                'Kuning': '#F9A825',   # kuning
-                'Merah': '#C62828',    # merah
-                'Hitam': '#212121',    # hitam
-                'Lainnya': '#616161'   # abu-abu
-            }
+if mode_view == "Per Bulan":
+    list_bulan = df['BULAN'].unique().tolist()
+    selected_month = st.sidebar.selectbox("Pilih Bulan:", list_bulan)
+    filtered_df = df[df['BULAN'] == selected_month]
+else:
+    filtered_df = df
 
-            # Tampilkan tabel per zona
-            ada_data = False
-            for zona_name, daftar_unit in zona_dict.items():
-                if not daftar_unit:
-                    continue
-                ada_data = True
+# Filter Sub Unit Kerja
+sub_units = ["Semua"] + df['SUB UNIT KERJA'].unique().tolist()
+selected_sub = st.sidebar.selectbox("Filter Sub Unit:", sub_units)
+if selected_sub != "Semua":
+    filtered_df = filtered_df[filtered_df['SUB UNIT KERJA'] == selected_sub]
 
-                st.markdown(
-                    f"<h3 style='color: {warna_zona.get(zona_name, '#000')}; margin-top: 40px; border-bottom: 2px solid {warna_zona.get(zona_name, '#000')}; padding-bottom: 8px;'>"
-                    f"{zona_name}"
-                    "</h3>",
-                    unsafe_allow_html=True
-                )
+# 4. Header Dashboard
+st.title("📊 Dashboard Monitoring Kepatuhan LHKPN")
+st.markdown(f"Status Kepatuhan: **{mode_view}** | Sub-Unit: **{selected_sub}**")
+st.divider()
 
-                df_tabel = pd.DataFrame({
-                    'No': range(1, len(daftar_unit) + 1),
-                    'Sub Unit Kerja': daftar_unit
-                })
+# 5. Ringkasan Metric (KPI)
+col1, col2, col3, col4 = st.columns(4)
+total_wl = len(filtered_df)
+hitam_count = len(filtered_df[filtered_df['PREDIKAT'] == "⚫ ZONA HITAM"])
+hijau_count = len(filtered_df[filtered_df['PREDIKAT'] == "🟢 ZONA HIJAU"])
+compliance_rate = ((total_wl - hitam_count) / total_wl) * 100 if total_wl > 0 else 0
 
-                st.table(
-                    df_tabel.style
-                    .set_properties(**{'text-align': 'left', 'padding': '10px', 'font-size': '15px'})
-                    .set_table_styles([
-                        {'selector': 'th', 'props': [('background-color', '#f0f0f0'), ('font-weight', 'bold'), ('border', '1px solid #ccc')]},
-                        {'selector': 'td', 'props': [('border', '1px solid #ddd')]},
-                        {'selector': 'tr:nth-child(even)', 'props': [('background-color', '#f9f9f9')]}
-                    ])
-                )
+col1.metric("Total Wajib Lapor", f"{total_wl} Jiwa")
+col2.metric("Tingkat Kepatuhan", f"{compliance_rate:.1f}%")
+col3.metric("Zona Hitam (Kritis)", hitam_count, delta_color="inverse")
+col4.metric("Zona Hijau (Teladan)", hijau_count)
 
-                st.markdown("<br>", unsafe_allow_html=True)
+# 6. Visualisasi Utama
+st.subheader("Visualisasi Distribusi Kepatuhan")
+c1, c2 = st.columns([1, 1])
 
-            if not ada_data:
-                st.info("Tidak ada sub unit dengan data yang cukup untuk dikategorikan.")
+with c1:
+    # Chart Distribusi Predikat
+    fig_pie = px.pie(filtered_df, names='PREDIKAT', title="Persentase Predikat Kepatuhan",
+                     color='PREDIKAT', color_discrete_map={
+                         "🟢 ZONA HIJAU": "#4CAF50", "🟡 ZONA KUNING": "#FFC107",
+                         "🔴 ZONA MERAH": "#F44336", "⚫ ZONA HITAM": "#212121", "⚪ LAINNYA": "#BDBDBD"
+                     })
+    st.plotly_chart(fig_pie, use_container_width=True)
 
-            st.markdown("---")
-            st.caption(
-                f"Periode: **{periode}**  |  "
-                f"Total Sub Unit Kerja: **{len(grouped)}**  |  "
-                f"Jumlah pegawai diproses: **{len(df_filter)}**  |  "
-                f"Diolah: {pd.Timestamp.now().strftime('%d %b %Y %H:%M WIB')}"
-            )
+with c2:
+    # Chart Sub Unit Paling Kritis (Hitam Terbanyak)
+    hitam_df = filtered_df[filtered_df['PREDIKAT'] == "⚫ ZONA HITAM"]
+    top_kritis = hitam_df['SUB UNIT KERJA'].value_counts().reset_index().head(10)
+    fig_bar = px.bar(top_kritis, x='count', y='SUB UNIT KERJA', orientation='h',
+                     title="Top 10 Sub-Unit (Zona Hitam Terbanyak)",
+                     color_discrete_sequence=['#212121'])
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-    except Exception as e:
-        st.error(f"Terjadi kesalahan saat membaca file: {str(e)}\nPastikan file XLS/XLSX valid dan punya kolom yang diperlukan.")
+# 7. Insight Khusus Pimpinan
+st.warning("### ⚠️ Perhatian Khusus Pimpinan")
+if hitam_count > 0:
+    st.write(f"Terdapat **{hitam_count} Wajib Lapor** yang masuk dalam **ZONA HITAM** (Belum Lapor). Mohon segera instruksikan Kepala Sub-Unit terkait untuk melakukan pembinaan.")
+else:
+    st.success("Selamat! Tidak ada Wajib Lapor di Zona Hitam pada filter ini.")
+
+# 8. Tabel Detail Data
+st.subheader("Daftar Detail Wajib Lapor")
+st.dataframe(filtered_df[['NAMA', 'JABATAN', 'SUB UNIT KERJA', 'Status LHKPN', 'PREDIKAT']], use_container_width=True)
