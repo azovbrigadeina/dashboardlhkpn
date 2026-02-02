@@ -43,10 +43,10 @@ def login_page():
     with col2:
         st.write("") 
         st.write("") 
-        st.markdown("<h1 style='text-align: center;'>🔐 Login Sistem LHKPN</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center;'>🔐 Login Sistem Dashboarh #slavaukraini</h1>", unsafe_allow_html=True)
         with st.container():
             username = st.text_input("Username", placeholder="Masukkan username bebas...")
-            password = st.text_input("Password", type="password", placeholder="Masukkan 123456")
+            password = st.text_input("Password", type="password", placeholder="Masukkan Password")
             
             if st.button("Masuk Sekarang", use_container_width=True):
                 if password == "123456":
