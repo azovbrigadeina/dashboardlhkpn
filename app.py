@@ -1,28 +1,57 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
-# --- 1. CONFIG & STYLING ---
-st.set_page_config(page_title="LHKPN Monitoring System", layout="wide")
+# --- 1. SET PAGE CONFIG ---
+st.set_page_config(page_title="Executive LHKPN Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# Styling agar tampilan lebih profesional
+# --- 2. CUSTOM CSS FOR BEAUTIFICATION ---
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #e0e0e0; }
+    /* Mengubah font dan background */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    
+    .main { background-color: #f4f7f9; }
+    
+    /* Styling Kartu Metric */
+    div[data-testid="stMetricValue"] { font-size: 28px; font-weight: 700; color: #1e293b; }
+    div[data-testid="stMetricLabel"] { font-size: 14px; color: #64748b; font-weight: 600; }
+    div[data-testid="metric-container"] {
+        background-color: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        border: 1px solid #f1f5f9;
+    }
+
+    /* Sidebar styling */
+    section[data-testid="stSidebar"] { background-color: #0f172a; color: white; }
+    section[data-testid="stSidebar"] .stMarkdown { color: white; }
+    
+    /* Button styling */
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        border: none;
+        background-color: #3b82f6;
+        color: white;
+        font-weight: 600;
+        transition: 0.3s;
+    }
+    .stButton>button:hover { background-color: #2563eb; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIKA DATA PROCESSING ---
-def proses_data_lhkpn(df, filter_bulan):
+# --- 3. DATA ENGINE ---
+def process_data(df, filter_bulan):
     df.columns = df.columns.str.strip()
-    df['NIK'] = df['NIK'].astype(str).str.replace("'", "") # Bersihkan tanda petik pada NIK
-
-    # Fungsi penentuan ranking (Angka rendah = Prioritas status terbaik)
+    df['NIK'] = df['NIK'].astype(str).str.replace("'", "")
+    
     def get_rank(row):
         status = str(row['Status LHKPN']).strip()
         bulan = str(row['BULAN']).strip().upper()
-        
         if status == "Diumumkan Lengkap" and bulan == "JANUARI": return 1, "🟢 ZONA HIJAU"
         if status == "Terverifikasi Lengkap" and bulan == "FEBRUARI": return 2, "🟡 ZONA KUNING"
         if status == "Draft" and bulan == "MARET": return 3, "🔴 ZONA MERAH"
@@ -30,136 +59,114 @@ def proses_data_lhkpn(df, filter_bulan):
         return 4, "⚪ LAINNYA"
 
     df['rank'], df['PREDIKAT'] = zip(*df.apply(get_rank, axis=1))
-
-    # Jika filter bulan dipilih selain 'GLOBAL'
-    if filter_bulan != "GLOBAL":
+    if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     
-    # Proses Unifikasi (1 NIK 1 Data Terbaik)
-    df_unik = df.sort_values('rank').drop_duplicates(subset=['NIK'], keep='first')
-    return df_unik
+    return df.sort_values('rank').drop_duplicates(subset=['NIK'], keep='first')
 
-# --- 3. SESSION STATE & LOGIN ---
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
+# --- 4. AUTHENTICATION ---
+if 'auth' not in st.session_state:
+    st.session_state['auth'] = False
 
-def login_page():
-    col1, col2, col3 = st.columns([1,1.5,1])
+if not st.session_state['auth']:
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.write("")
-        st.markdown("<h1 style='text-align: center;'>🏛️ LHKPN LOGIN</h1>", unsafe_allow_html=True)
-        st.info("Gunakan Password: **123456**")
-        with st.container():
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            if st.button("Masuk", use_container_width=True):
-                if password == "123456":
-                    st.session_state['logged_in'] = True
-                    st.rerun()
-                else:
-                    st.error("Password salah!")
-
-# --- 4. DASHBOARD UTAMA ---
-def main_dashboard():
-    # Sidebar
-    st.sidebar.title("🛠️ Control Panel")
-    if st.sidebar.button("Logout"):
-        st.session_state['logged_in'] = False
-        st.rerun()
-    
-    st.sidebar.divider()
-    uploaded_file = st.sidebar.file_uploader("Upload Data Gabungan (.xlsx)", type=["xlsx"])
-    
-    if uploaded_file:
-        raw_df = pd.read_excel(uploaded_file)
-        
-        # Filter Bulan di Sidebar
-        list_bulan = ["GLOBAL"] + [str(b).upper() for b in raw_df['BULAN'].unique() if pd.notna(b)]
-        selected_bulan = st.sidebar.selectbox("📅 Pilih Periode Laporan:", list_bulan)
-        
-        # Pencarian Nama
-        search_name = st.sidebar.text_input("🔍 Cari Nama Personil:")
-
-        # Proses Data Berdasarkan Filter
-        df = proses_data_lhkpn(raw_df, selected_bulan)
-        if search_name:
-            df = df[df['NAMA'].str.contains(search_name, case=False, na=False)]
-
-        # --- HEADER ---
-        st.title(f"📊 Dashboard Kepatuhan - {selected_bulan}")
-        st.caption(f"Menampilkan {len(df)} Wajib Lapor yang telah diverifikasi (Satu data per NIK).")
-
-        # --- KPI SECTION ---
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
-        
-        total_wl = len(df)
-        h = len(df[df['PREDIKAT'] == "🟢 ZONA HIJAU"])
-        k = len(df[df['PREDIKAT'] == "🟡 ZONA KUNING"])
-        m = len(df[df['PREDIKAT'] == "🔴 ZONA MERAH"])
-        hitam = len(df[df['PREDIKAT'] == "⚫ ZONA HITAM"])
-        persen = ((total_wl - hitam) / total_wl * 100) if total_wl > 0 else 0
-
-        m1.metric("Total Individu", total_wl)
-        m2.metric("🟢 Hijau", h)
-        m3.metric("🟡 Kuning", k)
-        m4.metric("🔴 Merah", m)
-        m5.metric("⚫ Hitam", hitam, delta_color="inverse")
-        m6.metric("Kepatuhan", f"{persen:.1f}%")
-
-        # --- VISUALISASI UTAMA ---
-        st.divider()
-        c1, c2 = st.columns([1, 1.2])
-
-        with c1:
-            st.subheader("📊 Komposisi Predikat")
-            fig = px.pie(df, names='PREDIKAT', color='PREDIKAT',
-                         color_discrete_map={"🟢 ZONA HIJAU":"#2E7D32", "🟡 ZONA KUNING":"#FBC02D", 
-                                             "🔴 ZONA MERAH":"#D32F2F", "⚫ ZONA HITAM":"#212121", "⚪ LAINNYA":"#9E9E9E"})
-            st.plotly_chart(fig, use_container_width=True)
-
-        with c2:
-            st.subheader("🚨 List Sub-Unit Zona Hitam")
-            hitam_df = df[df['PREDIKAT'] == "⚫ ZONA HITAM"]
-            if not hitam_df.empty:
-                unit_hitam = hitam_df['SUB UNIT KERJA'].value_counts().reset_index()
-                unit_hitam.columns = ['Sub Unit', 'Jumlah Personil']
-                st.dataframe(unit_hitam, use_container_width=True, height=300)
+        st.write("#")
+        st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+        st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=100) # Logo placeholder
+        st.title("Executive Login")
+        st.markdown("---")
+        user = st.text_input("Username", value="Pimpinan")
+        pw = st.text_input("Password", type="password")
+        if st.button("Masuk Ke Dashboard"):
+            if pw == "123456":
+                st.session_state['auth'] = True
+                st.rerun()
             else:
-                st.success("Luar Biasa! Tidak ada unit di Zona Hitam.")
+                st.error("Akses Ditolak: Password Salah")
+    st.stop()
 
-        # --- LEADERBOARD SECTION ---
-        st.divider()
-        st.subheader("🏆 Peringkat Sub-Unit Berdasarkan Zona")
-        l1, l2, l3 = st.columns(3)
+# --- 5. MAIN CONTENT ---
+# Sidebar controls
+with st.sidebar:
+    st.markdown("### 🎛️ NAVIGATION")
+    if st.button("🚪 Logout"):
+        st.session_state['auth'] = False
+        st.rerun()
+    st.divider()
+    up_file = st.file_uploader("📂 Upload File Data", type=["xlsx"])
+    st.divider()
+    st.info("💡 **Tips:** Pilih mode GLOBAL untuk melihat status kepatuhan final setiap personil.")
 
-        with l1:
-            st.markdown("##### 10 Besar Zona Hijau")
-            top_h = df[df['PREDIKAT'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().head(10)
-            if not top_h.empty: st.bar_chart(top_h, color="#2E7D32")
-            else: st.write("Data Kosong")
+if up_file:
+    raw_df = pd.read_excel(up_file)
+    list_bln = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in raw_df['BULAN'].unique() if pd.notna(b)])
+    sel_bln = st.sidebar.selectbox("📅 Pilih Periode View:", list_bln)
+    
+    df = process_data(raw_df, sel_bln)
 
-        with l2:
-            st.markdown("##### 10 Besar Zona Kuning")
-            top_k = df[df['PREDIKAT'] == "🟡 ZONA KUNING"]['SUB UNIT KERJA'].value_counts().head(10)
-            if not top_k.empty: st.bar_chart(top_k, color="#FBC02D")
-            else: st.write("Data Kosong")
+    # --- TOP HEADER ---
+    st.markdown(f"## 🏛️ Monitoring Kepatuhan LHKPN - {sel_bln}")
+    st.markdown(f"**Data Unik:** {len(df)} Personil Terdeteksi")
+    st.write("#")
 
-        with l3:
-            st.markdown("##### 10 Besar Zona Merah")
-            top_m = df[df['PREDIKAT'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().head(10)
-            if not top_m.empty: st.bar_chart(top_m, color="#D32F2F")
-            else: st.write("Data Kosong")
+    # --- KPI CARDS ---
+    c1, c2, c3, c4, c5 = st.columns(5)
+    hitam = len(df[df['PREDIKAT'] == "⚫ ZONA HITAM"])
+    rate = ((len(df) - hitam) / len(df) * 100) if len(df) > 0 else 0
+    
+    c1.metric("TOTAL PERSONIL", len(df))
+    c2.metric("🟢 ZONA HIJAU", len(df[df['PREDIKAT'] == "🟢 ZONA HIJAU"]))
+    c3.metric("🔴 ZONA MERAH", len(df[df['PREDIKAT'] == "🔴 ZONA MERAH"]))
+    c4.metric("⚫ ZONA HITAM", hitam)
+    c5.metric("KEPATUHAN (%)", f"{rate:.1f}%")
 
-        # --- TABEL DETAIL ---
-        st.divider()
-        with st.expander("🔍 Lihat Semua Detail Data (Individu Unik)"):
-            st.dataframe(df[['NIK', 'NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'BULAN', 'PREDIKAT']], use_container_width=True)
+    st.write("#")
 
-    else:
-        st.warning("Silakan unggah file Excel untuk melihat data.")
+    # --- CHARTS SECTION ---
+    row1_1, row1_2 = st.columns([1, 1.5])
+    
+    with row1_1:
+        st.markdown("#### 🍩 Distribusi Predikat")
+        fig_donut = px.pie(df, names='PREDIKAT', hole=0.5,
+                           color='PREDIKAT', color_discrete_map={
+                               "🟢 ZONA HIJAU":"#10b981", "🟡 ZONA KUNING":"#f59e0b", 
+                               "🔴 ZONA MERAH":"#ef4444", "⚫ ZONA HITAM":"#1e293b", "⚪ LAINNYA":"#94a3b8"})
+        fig_donut.update_layout(showlegend=True, margin=dict(t=0, b=0, l=0, r=0))
+        st.plotly_chart(fig_donut, use_container_width=True)
 
-# --- ROUTING ---
-if st.session_state['logged_in']:
-    main_dashboard()
+    with row1_2:
+        st.markdown("#### 🚨 Sub-Unit Paling Kritis (Zona Hitam)")
+        hitam_data = df[df['PREDIKAT'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index()
+        hitam_data.columns = ['Unit', 'Jumlah']
+        fig_bar = px.bar(hitam_data.head(10), x='Jumlah', y='Unit', orientation='h', 
+                         color_discrete_sequence=['#1e293b'])
+        fig_bar.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=300)
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    # --- LEADERBOARD & TABLE ---
+    st.divider()
+    st.markdown("### 🏆 Leaderboard Kepatuhan Sub-Unit")
+    col_l1, col_l2 = st.columns(2)
+    
+    with col_l1:
+        st.markdown("<h5 style='color: #10b981;'>Paling Patuh (Hijau)</h5>", unsafe_allow_html=True)
+        top_h = df[df['PREDIKAT'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts().head(5)
+        st.dataframe(top_h, use_container_width=True)
+
+    with col_l2:
+        st.markdown("<h5 style='color: #ef4444;'>Paling Merah (Draft Maret)</h5>", unsafe_allow_html=True)
+        top_m = df[df['PREDIKAT'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().head(5)
+        st.dataframe(top_m, use_container_width=True)
+
+    st.write("#")
+    with st.expander("📄 KLIK UNTUK MELIHAT TABEL DETAIL LENGKAP"):
+        st.dataframe(df[['NAMA', 'JABATAN', 'SUB UNIT KERJA', 'Status LHKPN', 'PREDIKAT']], use_container_width=True)
+
 else:
-    login_page()
+    st.markdown("""
+        <div style='text-align: center; padding: 100px;'>
+            <h2 style='color: #64748b;'>👋 Selamat Datang, Pimpinan</h2>
+            <p style='color: #94a3b8;'>Silakan unggah file data LHKPN gabungan melalui sidebar untuk memuat analisis kepatuhan.</p>
+        </div>
+    """, unsafe_allow_html=True)
