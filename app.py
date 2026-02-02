@@ -107,23 +107,35 @@ if file_upload:
         </div>
         """, unsafe_allow_html=True)
 
-        # Visualisasi dengan Judul
+        # Visualisasi dengan Perbaikan Judul
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
-                         title="<b>Persentase Sebaran Zona</b>",
+                         title="Persentase Sebaran Zona",
                          color_discrete_map={"🟢 ZONA HIJAU":"#22C55E", "🟡 ZONA KUNING":"#F59E0B", 
                                              "🔴 ZONA MERAH":"#EF4444", "⚫ ZONA HITAM":"#64748B", "⚪ LAINNYA":"#94A3B8"})
-            fig.update_layout(height=350, margin=dict(t=50, b=0, l=0, r=0), title_x=0.5)
+            fig.update_layout(
+                height=400, 
+                margin=dict(t=100, b=20, l=20, r=20), # t=100 memberi ruang untuk judul
+                title_x=0.5,
+                title_y=0.95, # Mengatur posisi judul agar tidak mepet atas
+                title_font_size=18
+            )
             st.plotly_chart(fig, use_container_width=True)
             
         with c2:
             df_hitam = data[data['ZONA'] == "⚫ ZONA HITAM"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
             df_hitam.columns = ['Unit Kerja', 'Jumlah']
             fig_bar = px.bar(df_hitam, x='Jumlah', y='Unit Kerja', orientation='h', 
-                             title="<b>10 Unit Kerja Terbanyak (Zona Hitam)</b>",
+                             title="10 Unit Kerja Terbanyak (Zona Hitam)",
                              color_discrete_sequence=['#64748B'])
-            fig_bar.update_layout(height=350, margin=dict(t=50, b=20, l=0, r=20), title_x=0.5)
+            fig_bar.update_layout(
+                height=400, 
+                margin=dict(t=100, b=40, l=20, r=40), 
+                title_x=0.5,
+                title_y=0.95,
+                title_font_size=18
+            )
             st.plotly_chart(fig_bar, use_container_width=True)
 
         # --- PERINGKAT LEADERSHIP ---
