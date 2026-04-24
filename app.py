@@ -30,18 +30,18 @@ st.markdown("""
 
 # --- 2. LOGIKA DATA ENGINE ---
 def proses_data_unja(df, filter_bulan):
-    # --- PEMBERSIHAN DATA AGAR ANGKA AKURAT ---
-    # 1. Hapus baris yang NIK-nya benar-benar kosong
+    # --- TAHAP 1: MEMBERSIHKAN DATA SAMPAH ---
+    # Hapus baris yang kolom NIK-nya benar-benar kosong (NaN)
     df = df.dropna(subset=['NIK'])
     
-    # 2. Bersihkan spasi dan karakter aneh pada NIK
+    # --- TAHAP 2: SERAGAMKAN FORMAT NIK ---
+    # Hapus tanda kutip, spasi, dan paksa jadi string agar tidak ada beda format angka/teks
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True)
     
-    # 3. Buang baris yang NIK-nya tidak valid (nan atau cuma string kosong)
-    df = df[df['NIK_KEY'] != "nan"]
-    df = df[df['NIK_KEY'] != ""]
+    # Buang baris yang NIK-nya setelah dibersihkan malah kosong atau cuma tulisan 'nan'
+    df = df[~df['NIK_KEY'].isin(['nan', '', 'None'])]
     
-    # --- LOGIKA ZONA ---
+    # --- TAHAP 3: PENENTUAN ZONA ---
     def get_zona(row):
         status = str(row['Status LHKPN']).strip()
         hijau_status = ["Diumumkan Lengkap", "Diumumkan Tidak Lengkap", "Perlu Perbaikan", 
@@ -55,11 +55,13 @@ def proses_data_unja(df, filter_bulan):
     df['rank'] = [x[0] for x in res]
     df['ZONA'] = [x[1] for x in res]
     
-    # Filter Bulan
+    # --- TAHAP 4: FILTER BULAN ---
     if filter_bulan != "GLOBAL (AKUMULASI)":
-        df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
+        # Pastikan kolom bulan bersih dari spasi sebelum difilter
+        df = df[df['BULAN'].astype(str).str.strip().str.upper() == filter_bulan]
     
-    # Deduplikasi NIK
+    # --- TAHAP 5: DEDUPLIKASI FINAL (KUNCI AKURASI) ---
+    # Urutkan berdasarkan rank (Hijau dulu), lalu ambil 1 NIK unik
     df_final = df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
     
     return df_final
