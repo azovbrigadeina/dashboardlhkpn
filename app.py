@@ -8,8 +8,9 @@ st.set_page_config(page_title="LHKPN UNJA Monitoring", layout="wide")
 # --- 2. DATA ENGINE ---
 @st.cache_data
 def proses_data_unja(df, filter_bulan):
+    # Membersihkan data dasar
     df = df.dropna(subset=['NIK', 'NAMA', 'SUB UNIT KERJA'])
-    df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True).str.split('.').str[0]
+    df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[^0-9]", "", regex=True)
     
     def get_zona(row):
         status = str(row['Status LHKPN']).strip()
@@ -34,13 +35,36 @@ if 'auth' not in st.session_state: st.session_state['auth'] = False
 if not st.session_state['auth']:
     _, col, _ = st.columns([1, 1, 1])
     with col:
+        st.write("# 🏛️ LHKPN Login")
         p = st.text_input("Password Akses", type="password")
-        if st.button("Masuk", width='stretch'):
-            if p == "123456": st.session_state['auth'] = True; st.rerun()
+        if st.button("Masuk", use_container_width=True):
+            if p == "123456": 
+                st.session_state['auth'] = True
+                st.rerun()
+            else:
+                st.error("Password Salah!")
     st.stop()
 
-# --- 4. DASHBOARD AREA ---
+# --- 4. CSS CUSTOM UNTUK CARD ---
+st.markdown("""
+    <style>
+    .metric-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        text-align: center;
+        border-top: 5px solid #ececec;
+    }
+    .metric-label { font-size: 14px; color: #64748b; font-weight: bold; }
+    .metric-value { font-size: 32px; font-weight: bold; color: #1e293b; margin: 5px 0; }
+    .metric-delta { font-size: 13px; font-weight: 600; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 5. DASHBOARD AREA ---
 with st.sidebar:
+    st.header("⚙️ Kontrol")
     file_upload = st.file_uploader("Upload Excel/CSV LHKPN", type=["xlsx", "csv"])
 
 if file_upload:
@@ -48,6 +72,7 @@ if file_upload:
         raw = pd.read_csv(file_upload) if file_upload.name.endswith('.csv') else pd.read_excel(file_upload)
         list_bln = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in raw['BULAN'].unique() if pd.notna(b)])
         sel_bln = st.sidebar.selectbox("Pilih Periode:", list_bln)
+        
         data = proses_data_unja(raw, sel_bln)
 
         # KALKULASI
@@ -57,72 +82,85 @@ if file_upload:
         m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
         rate = (h / total_wl * 100) if total_wl > 0 else 0
 
+        st.title("🏛️ Dashboard LHKPN Monitoring")
+        
+        # --- GRID METRIK (CARD TIMBUL) ---
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(f'<div class="metric-card" style="border-top-color: #3b82f6;"><div class="metric-label">WAJIB LAPOR</div><div class="metric-value">{total_wl}</div><div class="metric-delta" style="color: #3b82f6;">Orang</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="metric-card" style="border-top-color: #22c55e;"><div class="metric-label">🟢 HIJAU</div><div class="metric-value">{h}</div><div class="metric-delta" style="color: #22c55e;">{rate:.1f}% Tuntas</div></div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown(f'<div class="metric-card" style="border-top-color: #f59e0b;"><div class="metric-label">🟡 KUNING</div><div class="metric-value">{k}</div><div class="metric-delta" style="color: #f59e0b;">Status Draft</div></div>', unsafe_allow_html=True)
+        with m4:
+            st.markdown(f'<div class="metric-card" style="border-top-color: #ef4444;"><div class="metric-label">🔴 MERAH</div><div class="metric-value">{m}</div><div class="metric-delta" style="color: #ef4444;">Belum Lapor</div></div>', unsafe_allow_html=True)
+
+        st.write("---")
+
+        # --- PAPAN INFORMASI EKSEKUTIF ---
         unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
         for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
             if z not in unit_stats.columns: unit_stats[z] = 0
-        unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
         
+        unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
         u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
         paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
-        
         u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
-        if not u_rendah.empty:
-            atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%) memerlukan atensi."
-        else:
-            atensi_label = "Luar biasa! Seluruh unit telah mencapai 100%."
+        atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
 
-        # METRIK
-        st.title("🏛️ Dashboard LHKPN")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Wajib Lapor", total_wl)
-        m2.metric("🟢 Hijau", h, f"{rate:.1f}%")
-        m3.metric("🟡 Kuning", k)
-        m4.metric("🔴 Merah", m, delta_color="inverse")
-
-        # --- PAPAN INFORMASI (TEKNIK RAPAT KIRI) ---
-        # Pastikan tidak ada spasi di awal baris HTML di bawah ini
         papan_html = f"""
-<div style="background-color: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; font-family: sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-<h3 style="text-align: center; color: #1e3a8a; margin-bottom: 20px;">📊 PAPAN INFORMASI EKSEKUTIF</h3>
-<div style="display: flex; flex-direction: column; gap: 15px;">
-<div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 15px;">
-<b style="color: #166534;">🏆 SEKTOR APRESIASI</b><br>
-<span style="font-size: 14px; color: #1e293b;">
-• <b>Kategori Paripurna (100%):</b> {paripurna_txt}<br>
-• <b>Total Unit Tuntas:</b> {len(u_100)} Sub-Unit.
-</span>
-</div>
-<div style="background-color: #fff1f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px;">
-<b style="color: #9f1239;">⚠️ SEKTOR ATENSI</b><br>
-<span style="font-size: 14px; color: #1e293b;">
-• <b>Fokus:</b> {atensi_label}<br>
-• <b>Residu:</b> {m} orang belum melapor.
-</span>
-</div>
-<div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px;">
-<b style="color: #1e40af;">⚡ SEKTOR AKSELERASI</b><br>
-<span style="font-size: 14px; color: #1e293b;">
-• <b>Quick-Wins:</b> {k} orang di Zona Kuning (Draft).<br>
-• <b>Estimasi:</b> Potensi naik ke <b>{((h+k)/total_wl*100):.1f}%</b>.
-</span>
-</div>
-</div>
-</div>
-"""
-        # Eksekusi Render
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #bbf7d0;">
+                    <b style="color: #166534;">🏆 APRESIASI</b><br>
+                    <small>Unit Paripurna: {paripurna_txt} ({len(u_100)} Unit)</small>
+                </div>
+                <div style="flex: 1; min-width: 250px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #fecaca;">
+                    <b style="color: #9f1239;">⚠️ ATENSI</b><br>
+                    <small>Prioritas: {atensi_label}</small>
+                </div>
+                <div style="flex: 1; min-width: 250px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #bfdbfe;">
+                    <b style="color: #1e40af;">⚡ AKSELERASI</b><br>
+                    <small>Potensi Maksimal: {((h+k)/total_wl*100):.1f}% Jika Kuning tuntas.</small>
+                </div>
+            </div>
+        </div>
+        """
         st.markdown(papan_html, unsafe_allow_html=True)
 
-        # VISUALISASI
-        st.write("---")
+        # --- TABEL DETAIL INDIVIDU ---
+        st.write("### 📋 Detail Individu")
+        col_f1, col_f2 = st.columns([1, 2])
+        with col_f1:
+            f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=data['ZONA'].unique())
+        with col_f2:
+            f_cari = st.text_input("Cari Nama/NIK/Unit:")
+
+        df_tabel = data[data['ZONA'].isin(f_zona)]
+        if f_cari:
+            df_tabel = df_tabel[df_tabel.apply(lambda row: f_cari.lower() in str(row).lower(), axis=1)]
+
+        st.dataframe(
+            df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']],
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # --- VISUALISASI ---
+        st.write("### 📊 Analisis Grafis")
         v1, v2 = st.columns([1, 1.5])
         with v1:
             st.plotly_chart(px.pie(data, names='ZONA', color='ZONA', hole=0.5,
-                                  color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"}), width='stretch')
+                                  color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"}), use_container_width=True)
         with v2:
             df_red = data[data['ZONA'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
-            st.plotly_chart(px.bar(df_red, x='count', y='SUB UNIT KERJA', orientation='h', title="Top 10 Unit Merah", color_discrete_sequence=['#EF4444']), width='stretch')
+            if not df_red.empty:
+                st.plotly_chart(px.bar(df_red, x='count', y='SUB UNIT KERJA', orientation='h', title="Top 10 Unit Perlu Atensi (Merah)", 
+                                     color_discrete_sequence=['#EF4444']), use_container_width=True)
+            else:
+                st.success("Tidak ada unit di Zona Merah!")
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Terjadi kesalahan pembacaan file: {e}")
 else:
-    st.info("Silakan unggah file database LHKPN.")
+    st.info("👋 Selamat Datang! Silakan unggah file database LHKPN di sidebar untuk memulai.")
