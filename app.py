@@ -30,33 +30,39 @@ st.markdown("""
 
 # --- 2. LOGIKA DATA ENGINE ---
 def proses_data_unja(df, filter_bulan):
-    # Membersihkan nama kolom dan NIK
+    # 1. Hapus baris yang NIK-nya kosong sama sekali (PENTING)
+    df = df.dropna(subset=['NIK'])
+    
+    # 2. Bersihkan nama kolom
     df.columns = df.columns.str.strip()
+    
+    # 3. Bersihkan NIK dari karakter kutip, spasi, atau simbol
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True)
+    
+    # 4. Hapus lagi jika ada NIK_KEY yang setelah dibersihkan jadi kosong/string kosong
+    df = df[df['NIK_KEY'] != "nan"]
+    df = df[df['NIK_KEY'] != ""]
     
     def get_zona(row):
         status = str(row['Status LHKPN']).strip()
         hijau_status = ["Diumumkan Lengkap", "Diumumkan Tidak Lengkap", "Perlu Perbaikan", 
                         "Perlu Verifikasi", "Terverifikasi Lengkap", "Proses Verifikasi"]
-        
-        if status in hijau_status:
-            return 1, "🟢 ZONA HIJAU"
-        elif status == "Draft":
-            return 2, "🟡 ZONA KUNING"
-        elif status == "Belum Lapor":
-            return 3, "🔴 ZONA MERAH"
+        if status in hijau_status: return 1, "🟢 ZONA HIJAU"
+        elif status == "Draft": return 2, "🟡 ZONA KUNING"
+        elif status == "Belum Lapor": return 3, "🔴 ZONA MERAH"
         return 4, "⚪ LAINNYA"
 
     res = df.apply(get_zona, axis=1)
     df['rank'] = [x[0] for x in res]
     df['ZONA'] = [x[1] for x in res]
     
-    # Filter Berdasarkan Bulan (Jika bukan Global)
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     
-    # DEDUPLIKASI: Mengambil status terbaik per orang (Rank terkecil)
-    return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
+    # Deduplikasi: Ambil 1 status terbaik per NIK
+    df_final = df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
+    
+    return df_final
 
 # --- 3. LOGIN ---
 if 'auth' not in st.session_state:
