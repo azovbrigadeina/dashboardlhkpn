@@ -29,14 +29,30 @@ def proses_data_unja(df, filter_bulan):
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True)
     
     def get_zona(row):
-        status = str(row['Status LHKPN']).strip()
-        bulan = str(row['BULAN']).strip().upper()
-        # Logika Predikat Berdasarkan Bulan & Status
-        if status == "Diumumkan Lengkap" and bulan == "JANUARI": return 1, "🟢 ZONA HIJAU"
-        if status == "Terverifikasi Lengkap" and bulan == "FEBRUARI": return 2, "🟡 ZONA KUNING"
-        if status == "Draft" and bulan == "MARET": return 3, "🔴 ZONA MERAH"
-        if status == "Belum Lapor": return 5, "⚫ ZONA HITAM"
-        return 4, "⚪ LAINNYA"
+    status = str(row['STATUS LHKPN']).strip()
+    
+    # Kriteria Hijau: Semua status yang menunjukkan laporan sudah dikirim/diproses
+    hijau_status = [
+        "Diumumkan Lengkap", 
+        "Diumumkan Tidak Lengkap", 
+        "Perlu Perbaikan", 
+        "Perlu Verifikasi", 
+        "Terverifikasi Lengkap"
+    ]
+    
+    if status in hijau_status:
+        return 1, "🟢 ZONA HIJAU"
+    
+    # Kategori Kuning: Masih disimpan sebagai draft
+    elif status == "Draft":
+        return 2, "🟡 ZONA KUNING"
+    
+    # Kategori Merah: Belum ada tindakan sama sekali
+    elif status == "Belum Lapor":
+        return 3, "🔴 ZONA MERAH"
+    
+    # Jika ada status di luar itu
+    return 4, "⚪ LAINNYA"
 
     df['rank'], df['ZONA'] = zip(*df.apply(get_zona, axis=1))
     
@@ -50,8 +66,7 @@ def proses_data_unja(df, filter_bulan):
 def style_zona(val):
     if "HIJAU" in val: return 'background-color: #dcfce7; color: #166534; font-weight: bold;'
     if "KUNING" in val: return 'background-color: #fef9c3; color: #854d0e; font-weight: bold;'
-    if "MERAH" in val: return 'background-color: #fee2e2; color: #991b1b; font-weight: bold;'
-    if "HITAM" in val: return 'background-color: #f1f5f9; color: #1e293b; font-weight: bold;'
+    if "MERAH" in val: return 'background-color: #fee2e2; color: #991b1b; font-weight: bold;' # Sekarang Merah = Belum Lapor
     return ''
 
 # --- 4. SISTEM LOGIN ---
@@ -94,19 +109,15 @@ if file_upload:
         st.title("🏛️ Monitoring Kepatuhan LHKPN")
         st.subheader(f"Universitas Jambi — Periode {sel_bln}")
         
-        # Row 1: KPI Metrics
-        m1, m2, m3, m4, m5 = st.columns(5)
-        total = len(data)
+        # Row 1: KPI Metrics (Ganti variabel m5/hitam menjadi merah)
         h = len(data[data['ZONA'] == "🟢 ZONA HIJAU"])
         k = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
         m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
-        hitam = len(data[data['ZONA'] == "⚫ ZONA HITAM"])
 
-        m1.metric("Wajib Lapor", total)
+        m1.metric("Wajib Lapor", len(data))
         m2.metric("🟢 Hijau", h)
         m3.metric("🟡 Kuning", k)
         m4.metric("🔴 Merah", m)
-        m5.metric("⚫ Hitam", hitam)
 
         # Row 2: Smart Recommendation Box
         rate = ((total - hitam) / total * 100) if total > 0 else 0
@@ -134,9 +145,12 @@ if file_upload:
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig_pie = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
-                             title="<b>Sebaran Status Kepatuhan</b>",
-                             color_discrete_map={"🟢 ZONA HIJAU":"#22C55E", "🟡 ZONA KUNING":"#F59E0B", 
-                                                 "🔴 ZONA MERAH":"#EF4444", "⚫ ZONA HITAM":"#64748B", "⚪ LAINNYA":"#94A3B8"})
+                 title="<b>Sebaran Status Kepatuhan</b>",
+                 color_discrete_map={
+                     "🟢 ZONA HIJAU": "#22C55E", 
+                     "🟡 ZONA KUNING": "#F59E0B", 
+                     "🔴 ZONA MERAH": "#EF4444"
+                 })
             fig_pie.update_layout(height=380, margin=dict(t=60, b=0, l=0, r=0), title_x=0.5)
             st.plotly_chart(fig_pie, width='stretch')
             
