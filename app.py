@@ -115,40 +115,42 @@ if file_upload:
         c4.metric("🔴 Merah", m, delta_color="inverse")
 
         # --- NOTA DINAS (DIPERBAIKI) ---
+       # --- BAGIAN NOTA DINAS (PASTIKAN POSISI TEKS RAPAT KIRI) ---
         nota_html = f"""
-        <div class="recom-box">
-            <h3 style="margin-top:0; color:#1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom:10px;">
-                🏛️ NOTA ANALISIS KEPATUHAN LHKPN
-            </h3>
-            <p style="font-size: 14px; color: #475569; font-style: italic;">
-                Kepada Yth: Pimpinan Universitas Jambi<br>
-                Dari: Admin Pengelola LHKPN Universitas
-            </p>
-            <p style="font-size: 15px; line-height: 1.6; color: #1e293b;">
-                Melaporkan progres kepatuhan periode <b>{sel_bln}</b> dengan tingkat kepatuhan <b>{rate:.1f}%</b>.
-            </p>
-            
-            <div style="background-color: #f0fdf4; padding: 18px; border-radius: 8px; border: 1px solid #bbf7d0; margin-bottom:15px; color: #166534;">
-                <b>1. Penguatan Komitmen (Apresiasi)</b><br>
-                Apresiasi kepada <b>{unit_teladan}</b> sebagai unit terbaik. 
-                Sebanyak <b>{lunas_unit_count} Sub-Unit</b> telah mencapai kepatuhan 100%.
-            </div>
+<div class="recom-box">
+<h3 style="margin-top:0; color:#1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom:10px;">
+🏛️ NOTA ANALISIS KEPATUHAN LHKPN
+</h3>
+<p style="font-size: 14px; color: #475569; font-style: italic;">
+Kepada Yth: Pimpinan Universitas Jambi<br>
+Dari: Admin Pengelola LHKPN Universitas
+</p>
+<p style="font-size: 15px; line-height: 1.6; color: #1e293b;">
+Melaporkan progres kepatuhan periode <b>{sel_bln}</b> dengan tingkat kepatuhan <b>{rate:.1f}%</b>.
+</p>
 
-            <div style="background-color: #fef2f2; padding: 18px; border-radius: 8px; border: 1px solid #fecaca; margin-bottom:15px; color: #991b1b;">
-                <b>2. Intervensi Manajerial (Atensi Khusus)</b><br>
-                Unit <b>{unit_kritis_nama}</b> memerlukan atensi pimpinan karena kepatuhan baru mencapai <b>{unit_kritis_persen:.1f}%</b>.
-            </div>
+<div style="background-color: #f0fdf4; padding: 18px; border-radius: 8px; border: 1px solid #bbf7d0; margin-bottom:15px; color: #166534;">
+<b>1. Penguatan Komitmen (Apresiasi)</b><br>
+Apresiasi kepada <b>{unit_teladan}</b> sebagai unit terbaik. 
+Sebanyak <b>{lunas_unit_count} Sub-Unit</b> telah mencapai kepatuhan 100%.
+</div>
 
-            <div style="background-color: #fffbeb; padding: 18px; border-radius: 8px; border: 1px solid #fef3c7; margin-bottom:15px; color: #854d0e;">
-                <b>3. Strategi Quick-Wins</b><br>
-                Terdapat <b>{k} orang</b> di Zona Kuning (Draft). Jika instruksi submit dilakukan hari ini, kepatuhan naik menjadi <b>{((h+k)/total_wl*100):.1f}%</b>.
-            </div>
-            
-            <p style="font-size: 13px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
-                Demikian rekomendasi ini kami sampaikan untuk bahan kebijakan Pimpinan.
-            </p>
-        </div>
-        """
+<div style="background-color: #fef2f2; padding: 18px; border-radius: 8px; border: 1px solid #fecaca; margin-bottom:15px; color: #991b1b;">
+<b>2. Intervensi Manajerial (Atensi Khusus)</b><br>
+Unit <b>{unit_kritis_nama}</b> memerlukan atensi pimpinan karena kepatuhan baru mencapai <b>{unit_kritis_persen:.1f}%</b>.
+</div>
+
+<div style="background-color: #fffbeb; padding: 18px; border-radius: 8px; border: 1px solid #fef3c7; margin-bottom:15px; color: #854d0e;">
+<b>3. Strategi Quick-Wins</b><br>
+Terdapat <b>{k} orang</b> di Zona Kuning (Draft). Jika instruksi submit dilakukan hari ini, kepatuhan naik menjadi <b>{((h+k)/total_wl*100):.1f}%</b>.
+</div>
+
+<p style="font-size: 13px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+Demikian rekomendasi ini kami sampaikan untuk bahan kebijakan Pimpinan.
+</p>
+</div>
+"""
+        # Eksekusi dengan unsafe_allow_html=True
         st.markdown(nota_html, unsafe_allow_html=True)
 
         # VISUALISASI
