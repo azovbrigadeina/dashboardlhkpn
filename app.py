@@ -33,11 +33,9 @@ def load_data_from_gsheet(url):
         st.error(f"Gagal memuat data: {e}")
         return pd.DataFrame()
 
-# --- 3. SESSION STATE INITIALIZATION ---
-if 'auth' not in st.session_state:
-    st.session_state['auth'] = False
-if 'synced' not in st.session_state:
-    st.session_state['synced'] = False
+# --- 3. SESSION STATE ---
+if 'auth' not in st.session_state: st.session_state['auth'] = False
+if 'synced' not in st.session_state: st.session_state['synced'] = False
 
 # --- 4. LOGIN SYSTEM ---
 if not st.session_state['auth']:
@@ -56,43 +54,33 @@ if not st.session_state['auth']:
                     st.error("Kredensial Salah!")
     st.stop()
 
-# --- 5. CSS CUSTOM ---
-st.markdown("""
-    <style>
-    .metric-card {
-        background-color: white; padding: 20px; border-radius: 12px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08); text-align: center;
-        border-top: 5px solid #ececec;
-    }
-    .metric-label { font-size: 13px; color: #64748b; font-weight: bold; }
-    .metric-value { font-size: 36px; font-weight: bold; color: #1e293b; margin: 5px 0; }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 6. SIDEBAR CONTROL ---
+# --- 5. SIDEBAR CONTROL ---
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/f/f2/Logo_KPK.png", width=80)
-    st.header("SINKRONISASI")
+    st.header("Sync Center")
     
-    # Tombol Sinkronisasi Dramatis
-    if st.button("🔄 Sinkronkan Data KPK", use_container_width=True, type="secondary"):
-        with st.status("Menghubungkan ke Server e-LHKPN KPK...", expanded=True) as status:
-            st.write("📡 Membangun koneksi aman (SSL)...")
-            time.sleep(1.5)
-            st.write("🔑 Memverifikasi Token API SATU DATA...")
-            time.sleep(2)
-            st.write("📥 Mengunduh paket data Wajib Lapor...")
-            # Progress bar simulasi
-            prog = st.progress(0)
+    if st.button("🔄 Sinkronkan Data KPK", use_container_width=True):
+        with st.status("Menghubungkan ke Server KPK...", expanded=True) as status:
+            st.write("📡 Memverifikasi Koneksi Aman...")
+            time.sleep(1)
+            st.write("📥 Mengunduh Data Wajib Lapor...")
+            p = st.progress(0)
             for i in range(100):
-                time.sleep(0.02)
-                prog.progress(i + 1)
-            st.write("⚙️ Sinkronisasi Database lokal...")
+                time.sleep(0.01)
+                p.progress(i + 1)
             st.cache_data.clear()
             st.session_state['synced'] = True
-            time.sleep(1)
             status.update(label="✅ Sinkronisasi Berhasil!", state="complete", expanded=False)
-        st.toast("Data terbaru telah dimuat!", icon="🚀")
+        st.rerun()
+
+    sel_bln = "GLOBAL (AKUMULASI)"
+    if st.session_state['synced']:
+        st.divider()
+        st.subheader("📅 Periode")
+        raw_data = load_data_from_gsheet(GSHEET_URL)
+        if not raw_data.empty and 'BULAN' in raw_data.columns:
+            list_bln = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in raw_data['BULAN'].unique() if pd.notna(b)])
+            sel_bln = st.selectbox("Pilih Bulan:", list_bln)
 
     st.divider()
     if st.button("Log Out", type="primary", use_container_width=True):
@@ -100,60 +88,76 @@ with st.sidebar:
         st.session_state['synced'] = False
         st.rerun()
 
-# --- 7. MAIN DASHBOARD LOGIC ---
+# --- 6. DASHBOARD AREA ---
+st.markdown("""<style>
+    .metric-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); text-align: center; border-top: 5px solid #ececec; }
+    .papan-info { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 20px; }
+    .sektor-box { flex: 1; min-width: 250px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+</style>""", unsafe_allow_html=True)
+
 if not st.session_state['synced']:
-    # Tampilan jika belum klik sinkronisasi
     st.title("🏛️ Dashboard LHKPN")
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    _, mid, _ = st.columns([1, 2, 1])
-    with mid:
-        st.info("👋 **Selamat Datang!** Database saat ini masih kosong. Silakan tekan tombol **'Sinkronkan Data KPK'** di sidebar sebelah kiri untuk menarik data terbaru dari server.")
-        st.image("https://cdn-icons-png.flaticon.com/512/3588/3588668.png", width=200) # Ilustrasi sync
+    st.info("Silakan klik **'Sinkronkan Data KPK'** di sidebar untuk memuat data.")
 else:
-    # Tampilan Dashboard setelah klik sinkronisasi
     data = load_data_from_gsheet(GSHEET_URL)
-    
+    if sel_bln != "GLOBAL (AKUMULASI)":
+        data = data[data['BULAN'].astype(str).str.strip().str.upper() == sel_bln]
+
     if not data.empty:
-        st.title("🏛️ Dashboard Real-Time Monitoring")
+        st.title(f"🏛️ Monitoring Kepatuhan - {sel_bln}")
         
-        # Kalkulasi
-        total_wl = len(data)
-        h = len(data[data['ZONA'] == "🟢 ZONA HIJAU"])
-        k = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
-        m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
-        rate = (h / total_wl * 100) if total_wl > 0 else 0
+        # 1. METRIK UTAMA
+        twl = len(data); h = len(data[data['ZONA']=="🟢 ZONA HIJAU"]); k = len(data[data['ZONA']=="🟡 ZONA KUNING"]); m = len(data[data['ZONA']=="🔴 ZONA MERAH"])
+        rate = (h/twl*100) if twl > 0 else 0
 
-        # Metrik Cards
         m1, m2, m3, m4 = st.columns(4)
-        with m1: st.markdown(f'<div class="metric-card" style="border-top-color: #3b82f6;"><div class="metric-label">Wajib Lapor</div><div class="metric-value">{total_wl}</div></div>', unsafe_allow_html=True)
-        with m2: st.markdown(f'<div class="metric-card" style="border-top-color: #22c55e;"><div class="metric-label">🟢 Hijau</div><div class="metric-value">{h}</div><div style="color: #22c55e; font-weight: bold;">{rate:.1f}%</div></div>', unsafe_allow_html=True)
-        with m3: st.markdown(f'<div class="metric-card" style="border-top-color: #f59e0b;"><div class="metric-label">🟡 Kuning</div><div class="metric-value">{k}</div></div>', unsafe_allow_html=True)
-        with m4: st.markdown(f'<div class="metric-card" style="border-top-color: #ef4444;"><div class="metric-label">🔴 Merah</div><div class="metric-value">{m}</div></div>', unsafe_allow_html=True)
+        with m1: st.markdown(f'<div class="metric-card" style="border-top-color: #3b82f6;"><small>WAJIB LAPOR</small><div style="font-size:32px; font-weight:bold;">{twl}</div></div>', unsafe_allow_html=True)
+        with m2: st.markdown(f'<div class="metric-card" style="border-top-color: #22c55e;"><small>🟢 HIJAU</small><div style="font-size:32px; font-weight:bold;">{h}</div><div style="color:#22c55e;">{rate:.1f}%</div></div>', unsafe_allow_html=True)
+        with m3: st.markdown(f'<div class="metric-card" style="border-top-color: #f59e0b;"><small>🟡 KUNING</small><div style="font-size:32px; font-weight:bold;">{k}</div></div>', unsafe_allow_html=True)
+        with m4: st.markdown(f'<div class="metric-card" style="border-top-color: #ef4444;"><small>🔴 MERAH</small><div style="font-size:32px; font-weight:bold;">{m}</div></div>', unsafe_allow_html=True)
 
-        st.write("---")
+        # 2. PAPAN INFORMASI EKSEKUTIF
+        unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
+        for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
+            if z not in unit_stats.columns: unit_stats[z] = 0
         
-        # Filter & Tabel
-        st.subheader("📋 Daftar Informasi Individu")
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            search = st.text_input("🔍 Cari Nama, NIK, atau Unit Kerja:")
-        with c2:
-            z_select = st.multiselect("Status:", options=data['ZONA'].unique(), default=data['ZONA'].unique())
+        unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
+        u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
+        paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
+        u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
+        atensi_label = f"<b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua 100%"
 
-        df_final = data[data['ZONA'].isin(z_select)]
-        if search:
-            df_final = df_final[df_final.apply(lambda r: search.lower() in str(r).lower(), axis=1)]
+        st.markdown(f"""
+        <div class="papan-info">
+            <h4 style="text-align: center; color: #1e3a8a; margin-bottom: 15px;">📊 PAPAN INFORMASI EKSEKUTIF</h4>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <div class="sektor-box" style="border-left: 5px solid #22c55e;">
+                    <b style="color: #166534;">🏆 SEKTOR APRESIASI</b><br>
+                    <small>Unit Paripurna: {paripurna_txt} ({len(u_100)} Unit)</small>
+                </div>
+                <div class="sektor-box" style="border-left: 5px solid #ef4444;">
+                    <b style="color: #9f1239;">⚠️ SEKTOR ATENSI</b><br>
+                    <small>Prioritas: {atensi_label}</small>
+                </div>
+                <div class="sektor-box" style="border-left: 5px solid #3b82f6;">
+                    <b style="color: #1e40af;">⚡ SEKTOR AKSELERASI</b><br>
+                    <small>Potensi Maks: {((h+k)/twl*100):.1f}% (Jika Kuning Tuntas)</small>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        st.dataframe(df_final[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
-
-        # Visualisasi
+        # 3. TABEL & VISUALISASI
         st.write("---")
-        v1, v2 = st.columns(2)
-        with v1:
-            st.plotly_chart(px.pie(data, names='ZONA', color='ZONA', hole=0.4, color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"}), use_container_width=True)
-        with v2:
-            red_stats = data[data['ZONA'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().reset_index().head(5)
-            if not red_stats.empty:
-                st.plotly_chart(px.bar(red_stats, x='count', y='SUB UNIT KERJA', orientation='h', title="Top 5 Unit Kerja Zona Merah", color_discrete_sequence=['#EF4444']), use_container_width=True)
+        st.subheader("📋 Daftar Informasi Individu")
+        q = st.text_input("Cari Nama, NIK, atau Unit Kerja:")
+        df_f = data if not q else data[data.apply(lambda r: q.lower() in str(r).lower(), axis=1)]
+        st.dataframe(df_f[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
+        
+        c1, c2 = st.columns(2)
+        with c1: st.plotly_chart(px.pie(data, names='ZONA', color='ZONA', hole=0.4, color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"}), use_container_width=True)
+        with c2:
+            red_top = data[data['ZONA']=="🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().reset_index().head(5)
+            if not red_top.empty: st.plotly_chart(px.bar(red_top, x='count', y='SUB UNIT KERJA', orientation='h', title="Top 5 Unit Merah", color_discrete_sequence=['#EF4444']), use_container_width=True)
     else:
-        st.error("Gagal memproses data dari Google Sheets.")
+        st.error("Data pada periode ini kosong.")
