@@ -17,17 +17,19 @@ st.markdown("""
         border-left: 5px solid #1570EF;
         padding: 20px; border-radius: 10px; margin-bottom: 25px;
     }
+    /* GAYA BARU UNTUK KARTU HIGHLIGHT */
     .highlight-card {
         background-color: #f0fdf4;
-        border: 1px solid #bbf7d0;
-        padding: 15px; border-radius: 10px;
+        border: 2px solid #22c55e;
+        padding: 20px; border-radius: 12px;
         text-align: center;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
     header, footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIKA DATA ENGINE ---
+# --- 2. DATA ENGINE ---
 def proses_data_unja(df, filter_bulan):
     df.columns = df.columns.str.strip()
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True)
@@ -37,12 +39,9 @@ def proses_data_unja(df, filter_bulan):
         hijau_status = ["Diumumkan Lengkap", "Diumumkan Tidak Lengkap", "Perlu Perbaikan", 
                         "Perlu Verifikasi", "Terverifikasi Lengkap", "Proses Verifikasi"]
         
-        if status in hijau_status:
-            return 1, "🟢 ZONA HIJAU"
-        elif status == "Draft":
-            return 2, "🟡 ZONA KUNING"
-        elif status == "Belum Lapor":
-            return 3, "🔴 ZONA MERAH"
+        if status in hijau_status: return 1, "🟢 ZONA HIJAU"
+        elif status == "Draft": return 2, "🟡 ZONA KUNING"
+        elif status == "Belum Lapor": return 3, "🔴 ZONA MERAH"
         return 4, "⚪ LAINNYA"
 
     res = df.apply(get_zona, axis=1)
@@ -71,14 +70,14 @@ if not st.session_state['auth']:
             else: st.error("Password Salah!")
     st.stop()
 
-# --- 4. DASHBOARD ---
+# --- 4. DASHBOARD UTAMA ---
 with st.sidebar:
     st.title("UNJA MONITORING")
     if st.button("Log Out"):
         st.session_state['auth'] = False
         st.rerun()
     st.divider()
-    file_upload = st.file_uploader("Upload Database LHKPN", type=["xlsx", "csv"])
+    file_upload = st.file_uploader("Upload File CSV/Excel", type=["xlsx", "csv"])
 
 if file_upload:
     try:
@@ -88,71 +87,68 @@ if file_upload:
         
         data = proses_data_unja(raw, sel_bln)
 
-        # Header
         st.title("🏛️ Monitoring Kepatuhan LHKPN")
         st.subheader(f"Universitas Jambi — {sel_bln}")
         
-        # Row 1: KPI Metrics Utama
-        total_wl = len(data)
+        # ROW 1: METRIK UTAMA
         h_data = data[data['ZONA'] == "🟢 ZONA HIJAU"]
-        h = len(h_data)
-        k = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
-        m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
-
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Total Wajib Lapor", total_wl)
-        m2.metric("🟢 Zona Hijau", h)
-        m3.metric("🟡 Zona Kuning", k)
-        m4.metric("🔴 Zona Merah", m)
+        m1.metric("Total Wajib Lapor", len(data))
+        m2.metric("🟢 Zona Hijau", len(h_data))
+        m3.metric("🟡 Zona Kuning", len(data[data['ZONA'] == "🟡 ZONA KUNING"]))
+        m4.metric("🔴 Zona Merah", len(data[data['ZONA'] == "🔴 ZONA MERAH"]))
 
-        # --- BARU: TABEL PENANDA KHUSUS "DIUMUMKAN LENGKAP" ---
-        st.write("#")
-        col_text, col_table = st.columns([1, 1.5])
+        st.write("---")
+
+        # ROW 2: PENANDA KHUSUS "DIUMUMKAN LENGKAP" (TARGET ANDA)
+        col_highlight, col_breakdown = st.columns([1, 1.5])
         
-        with col_text:
+        with col_highlight:
+            # Hitung spesifik yang "Diumumkan Lengkap"
             lunas_kpk = len(h_data[h_data['Status LHKPN'] == "Diumumkan Lengkap"])
             st.markdown(f"""
                 <div class="highlight-card">
-                    <h3 style="margin:0; color:#166534;">🏆 {lunas_kpk} Orang</h3>
-                    <p style="margin:0; color:#166534;">Telah Berstatus <b>Diumumkan Lengkap</b> oleh KPK</p>
+                    <p style="margin:0; color:#166534; font-size: 14px;">STATUS PENCAPAIAN TERTINGGI</p>
+                    <h2 style="margin:0; color:#166534; font-size: 42px;">{lunas_kpk}</h2>
+                    <p style="margin:0; color:#166534; font-weight: bold;">Personel: Diumumkan Lengkap</p>
                 </div>
             """, unsafe_allow_html=True)
             
-            rate_hijau = (h / total_wl * 100) if total_wl > 0 else 0
-            st.info(f"Persentase Kepatuhan Global: **{rate_hijau:.1f}%**")
+            persen = (len(h_data)/len(data)*100) if len(data)>0 else 0
+            st.success(f"Tingkat Kepatuhan: **{persen:.1f}%**")
 
-        with col_table:
-            st.markdown("##### 📊 Detail Breakdown Status LHKPN")
-            # Membuat tabel rekapitulasi status
-            rekap_status = data['Status LHKPN'].value_counts().reset_index()
-            rekap_status.columns = ['Status Spesifik', 'Jumlah Personel']
+        with col_breakdown:
+            st.markdown("##### 📋 Rekapitulasi Status Detail")
+            rekap = data['Status LHKPN'].value_counts().reset_index()
+            rekap.columns = ['Status Spesifik', 'Jumlah']
             
-            # Berikan highlight pada baris 'Diumumkan Lengkap'
-            def highlight_lunas(s):
-                return ['background-color: #dcfce7; font-weight: bold' if s['Status Spesifik'] == 'Diumumkan Lengkap' else '' for _ in s]
+            # Highlight baris "Diumumkan Lengkap" di tabel
+            def highlight_row(s):
+                return ['background-color: #dcfce7; font-weight: bold;' if s['Status Spesifik'] == 'Diumumkan Lengkap' else '' for _ in s]
             
-            st.dataframe(rekap_status.style.apply(highlight_lunas, axis=1), use_container_width=True, hide_index=True)
+            st.dataframe(rekap.style.apply(highlight_row, axis=1), use_container_width=True, hide_index=True)
 
-        # Row 3: Visualizations
-        st.divider()
+        # ROW 3: VISUALISASI
+        st.write("---")
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig_pie = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
                              color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"},
-                             title="<b>Proporsi Zona Kepatuhan</b>")
+                             title="<b>Proporsi Kepatuhan</b>")
             st.plotly_chart(fig_pie, use_container_width=True)
             
         with c2:
-            df_m_count = data[data['ZONA'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
-            df_m_count.columns = ['Unit Kerja', 'Jumlah']
-            fig_bar = px.bar(df_m_count, x='Jumlah', y='Unit Kerja', orientation='h',
-                             title="<b>10 Unit dengan Angka 'Belum Lapor' Tertinggi</b>",
-                             color_discrete_sequence=['#EF4444'])
+            # Unit terbanyak Belum Lapor
+            df_unit = data[data['ZONA'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
+            df_unit.columns = ['Unit Kerja', 'Jumlah']
+            fig_bar = px.bar(df_unit, x='Jumlah', y='Unit Kerja', orientation='h',
+                             title="<b>10 Unit Perhatian (Belum Lapor)</b>", color_discrete_sequence=['#EF4444'])
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        # Row 4: Detailed Table
-        with st.expander("🔍 Lihat Detail Nama Per Individu"):
+        with st.expander("🔍 Cari Nama Per Individu"):
             st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Gagal memproses data: {e}")
+        st.error(f"Error: {e}")
+else:
+    st.info("Silakan unggah database pelaporan melalui sidebar.")
