@@ -10,7 +10,6 @@ st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
     header, footer {visibility: hidden;}
-    /* Mempercantik tampilan metrik */
     div[data-testid="stMetric"] {
         background-color: white;
         padding: 15px;
@@ -23,13 +22,9 @@ st.markdown("""
 # --- 2. LOGIKA PEMROSESAN DATA ---
 @st.cache_data
 def proses_data_unja(df, filter_bulan):
-    # Membersihkan data dari baris kosong
     df = df.dropna(subset=['NIK', 'NAMA', 'SUB UNIT KERJA'])
-    
-    # Normalisasi NIK agar tetap string (bukan scientific)
     df['NIK_KEY'] = df['NIK'].astype(str).str.replace(r"[\'\" ]", "", regex=True).str.split('.').str[0]
     
-    # Penentuan Zona Berdasarkan Status
     def get_zona(row):
         status = str(row['Status LHKPN']).strip()
         hijau_status = ["Diumumkan Lengkap", "Diumumkan Tidak Lengkap", "Perlu Perbaikan", 
@@ -46,10 +41,9 @@ def proses_data_unja(df, filter_bulan):
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.strip().str.upper() == filter_bulan]
     
-    # Deduplikasi: 1 NIK hanya diambil status terbaiknya
     return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
 
-# --- 3. SISTEM LOGIN SEDERHANA ---
+# --- 3. SISTEM LOGIN ---
 if 'auth' not in st.session_state:
     st.session_state['auth'] = False
 
@@ -59,8 +53,8 @@ if not st.session_state['auth']:
         st.write("#")
         st.markdown("<h2 style='text-align: center;'>🏛️ Monitoring LHKPN</h2>", unsafe_allow_html=True)
         pwd = st.text_input("Password Akses", type="password")
-        if st.button("Masuk", use_container_width=True):
-            if pwd == "123456": # Silakan ganti password ini
+        if st.button("Masuk", width='stretch'):
+            if pwd == "123456":
                 st.session_state['auth'] = True
                 st.rerun()
             else:
@@ -78,14 +72,10 @@ with st.sidebar:
 
 if file_upload:
     try:
-        # Load File
         raw = pd.read_csv(file_upload) if file_upload.name.endswith('.csv') else pd.read_excel(file_upload)
-        
-        # Filter Periode
         list_bln = ["GLOBAL (AKUMULASI)"] + sorted([str(b).upper() for b in raw['BULAN'].unique() if pd.notna(b)])
         sel_bln = st.sidebar.selectbox("Pilih Periode:", list_bln)
         
-        # Proses Data
         data = proses_data_unja(raw, sel_bln)
 
         # --- KALKULASI DATA ---
@@ -95,18 +85,15 @@ if file_upload:
         m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
         rate = (h / total_wl * 100) if total_wl > 0 else 0
 
-        # Statistik Unit Kerja
         unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
         for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
             if z not in unit_stats.columns: unit_stats[z] = 0
         
         unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
         
-        # Kategori Unit Paripurna (100%)
         u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
         paripurna_txt = ", ".join(u_100[:3]) + ("..." if len(u_100) > 3 else "") if u_100 else "Belum ada unit 100%"
         
-        # Kategori Unit Kritis (Dibawah Rata-rata)
         u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
         if not u_rendah.empty:
             kritis_nama = u_rendah.index[0]
@@ -118,15 +105,13 @@ if file_upload:
         # --- UI DISPLAY ---
         st.title("🏛️ Dashboard Informasi LHKPN")
         
-        # Metrik Atas
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Total Wajib Lapor", total_wl)
         m2.metric("🟢 Zona Hijau", h, f"{rate:.1f}%")
         m3.metric("🟡 Zona Kuning", k, "Draft")
         m4.metric("🔴 Zona Merah", m, "Belum Lapor", delta_color="inverse")
 
-        # --- PAPAN INFORMASI EKSEKUTIF (DENGAN DEDENT) ---
-        # Ini akan memastikan HTML dirender dengan benar tanpa gangguan spasi indentasi
+        # --- PAPAN INFORMASI EKSEKUTIF ---
         papan_html = textwrap.dedent(f"""
             <div style="background-color: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-family: sans-serif;">
                 <h3 style="text-align: center; color: #1e3a8a; margin-top: 0; margin-bottom: 20px;">📊 PAPAN INFORMASI STRATEGIS</h3>
@@ -151,7 +136,7 @@ if file_upload:
                     <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px;">
                         <b style="color: #1e40af; font-size: 16px;">⚡ SEKTOR AKSELERASI (POTENSI INSTAN)</b><br>
                         <div style="font-size: 14px; color: #1e293b; margin-top: 8px;">
-                            • <b>Quick-Wins:</b> Terdapat {k} orang di Zona Kuning (Draft) yang hanya butuh klik 'Submit'.<br>
+                            • <b>Quick-Wins:</b> Terdapat {k} orang di Zona Kuning (Draft).<br>
                             • <b>Proyeksi Kepatuhan:</b> Jika Zona Kuning tuntas hari ini, total kepatuhan naik ke <b>{((h+k)/total_wl*100):.1f}%</b>.
                         </div>
                     </div>
@@ -161,26 +146,24 @@ if file_upload:
         
         st.markdown(papan_html, unsafe_allow_html=True)
 
-        # Visualisasi Tambahan
         st.write("---")
         v1, v2 = st.columns([1, 1.5])
         with v1:
             fig_pie = px.pie(data, names='ZONA', color='ZONA', hole=0.5,
                              color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"},
                              title="<b>Proporsi Kepatuhan</b>")
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width='stretch')
         with v2:
             df_red = data[data['ZONA'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts().reset_index().head(10)
             df_red.columns = ['Unit', 'Jumlah']
             fig_bar = px.bar(df_red, x='Jumlah', y='Unit', orientation='h', title="<b>Top 10 Unit (Zona Merah)</b>", color_discrete_sequence=['#EF4444'])
             fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width='stretch')
 
-        # Tabel Detail
         with st.expander("🔍 Lihat Detail Data Individu"):
-            st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
+            st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], width='stretch', hide_index=True)
 
     except Exception as e:
         st.error(f"Terjadi kesalahan: {e}")
 else:
-    st.info("Silakan unggah database LHKPN melalui sidebar untuk melihat analisis.")
+    st.info("Silakan unggah database LHKPN melalui sidebar.")
