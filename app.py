@@ -12,11 +12,13 @@ st.markdown("""
         padding: 15px; border-radius: 12px;
         border: 1px solid rgba(151, 166, 195, 0.2);
     }
+    /* GAYA UNTUK REKOMENDASI NARATIF */
     .recom-box {
         background-color: rgba(21, 112, 239, 0.05);
         border-left: 5px solid #1570EF;
         padding: 20px; border-radius: 10px; margin-bottom: 25px;
     }
+    /* GAYA UNTUK KARTU HIGHLIGHT */
     .highlight-card {
         background-color: #f0fdf4;
         border: 2px solid #22c55e;
@@ -53,6 +55,7 @@ def proses_data_unja(df, filter_bulan):
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.upper() == filter_bulan]
     
+    # Deduplikasi: Ambil status terbaik per NIK
     return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
 
 # --- 3. LOGIN ---
@@ -94,16 +97,39 @@ if file_upload:
         
         # --- ROW 1: METRIK UTAMA ---
         h_data = data[data['ZONA'] == "🟢 ZONA HIJAU"]
+        total_wl = len(data)
+        h = len(h_data)
+        k = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
+        m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
+
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Wajib Lapor", len(data))
-        m2.metric("🟢 Hijau", len(h_data))
-        m3.metric("🟡 Kuning", len(data[data['ZONA'] == "🟡 ZONA KUNING"]))
-        m4.metric("🔴 Merah", len(data[data['ZONA'] == "🔴 ZONA MERAH"]))
+        m1.metric("Wajib Lapor", total_wl)
+        m2.metric("🟢 Zona Hijau", h)
+        m3.metric("🟡 Zona Kuning", k)
+        m4.metric("🔴 Zona Merah", m)
 
-        st.write("---")
+        # --- ROW 2: REKOMENDASI NARATIF PIMPINAN (KEMBALI ADA) ---
+        rate = (h / total_wl * 100) if total_wl > 0 else 0
+        df_m_count = data[data['ZONA'] == "🔴 ZONA MERAH"]['SUB UNIT KERJA'].value_counts()
+        unit_kritis = df_m_count.index[0] if not df_m_count.empty else "-"
+        df_g_count = data[data['ZONA'] == "🟢 ZONA HIJAU"]['SUB UNIT KERJA'].value_counts()
+        unit_teladan = df_g_count.index[0] if not df_g_count.empty else "-"
+        
+        st.markdown(f"""
+        <div class="recom-box">
+            <h4 style="margin-top:0; color:#1570EF;">📝 Rekomendasi Naratif Pimpinan</h4>
+            <p>Tingkat kepatuhan final saat ini mencapai <b>{rate:.1f}%</b>. 
+            Unit <b>{unit_teladan}</b> menunjukkan performa terbaik.</p>
+            <hr style="opacity:0.1; margin:10px 0;">
+            <b>Langkah Strategis:</b>
+            <ul>
+                <li><b>Prioritas:</b> Hubungi unit <b>{unit_kritis}</b> karena memiliki jumlah 'Belum Lapor' terbanyak.</li>
+                <li><b>Follow Up:</b> Segera ingatkan <b>{k} orang</b> di Zona Kuning (Draft) untuk klik tombol 'Kirim'.</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # --- ROW 2: PENANDA KHUSUS DIUMUMKAN LENGKAP ---
-        # Ini adalah bagian tabel penanda yang Anda minta
+        # --- ROW 3: PENANDA KHUSUS DIUMUMKAN LENGKAP ---
         col_highlight, col_breakdown = st.columns([1, 1.5])
         
         with col_highlight:
@@ -115,28 +141,25 @@ if file_upload:
                     <p style="margin:0; color:#166534; font-weight: bold;">Status: Diumumkan Lengkap</p>
                 </div>
             """, unsafe_allow_html=True)
-            
-            persen_hijau = (len(h_data) / len(data) * 100) if len(data) > 0 else 0
-            st.success(f"Tingkat Kepatuhan: **{persen_hijau:.1f}%**")
+            st.success(f"Progres Kepatuhan: **{rate:.1f}%**")
 
         with col_breakdown:
             st.markdown("##### 📋 Rekapitulasi Status Detil")
             rekap = data['Status LHKPN'].value_counts().reset_index()
             rekap.columns = ['Status Spesifik', 'Jumlah']
             
-            # Highlight khusus baris 'Diumumkan Lengkap'
             def highlight_lunas(s):
                 return ['background-color: #dcfce7; font-weight: bold;' if s['Status Spesifik'] == 'Diumumkan Lengkap' else '' for _ in s]
             
             st.dataframe(rekap.style.apply(highlight_lunas, axis=1), width='stretch', hide_index=True)
 
-        # --- ROW 3: VISUALISASI ---
+        # --- ROW 4: VISUALISASI ---
         st.write("---")
         c1, c2 = st.columns([1, 1.5])
         with c1:
             fig_pie = px.pie(data, names='ZONA', hole=0.5, color='ZONA',
                              color_discrete_map={"🟢 ZONA HIJAU": "#22C55E", "🟡 ZONA KUNING": "#F59E0B", "🔴 ZONA MERAH": "#EF4444"},
-                             title="<b>Proporsi Zona Kepatuhan</b>")
+                             title="<b>Proporsi Kepatuhan</b>")
             st.plotly_chart(fig_pie, width='stretch')
             
         with c2:
@@ -151,6 +174,6 @@ if file_upload:
             st.dataframe(data[['NAMA', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], width='stretch', hide_index=True)
 
     except Exception as e:
-        st.error(f"Gagal memproses data. Pastikan format kolom benar. Error: {e}")
+        st.error(f"Gagal memproses data: {e}")
 else:
     st.info("Silakan unggah database pelaporan melalui sidebar.")
