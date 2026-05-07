@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 import time
 import requests
+import json
+import os
 from io import StringIO
 
 # --- 1. CONFIG ---
@@ -13,12 +15,21 @@ SHEET_ID = "1nSVGjisOcYJp5a2XQsMm-Q9GM1u8BL_RM-T9YUbYJ48"
 GID = "465025576"
 GSHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
 
-# --- 3. CREDENTIALS ---
-VALID_USERS = {
-    "admin": "123456",
-    "operator": "unja2025",
-    "pimpinan": "lhkpn@unja",
-}
+# --- 3. USER MANAGEMENT (JSON DB) ---
+USER_DB_FILE = "users.json"
+
+def load_users():
+    if not os.path.exists(USER_DB_FILE):
+        return {}
+    with open(USER_DB_FILE, "r") as f:
+        return json.load(f)
+
+def save_users(users):
+    with open(USER_DB_FILE, "w") as f:
+        json.dump(users, f, indent=4)
+
+# Load initial users
+VALID_USERS = load_users()
 
 # --- 4. CSS GLOBAL ---
 st.markdown("""
@@ -94,7 +105,7 @@ def proses_data_unja(df, filter_bulan):
 
 
 # --- 6. SESSION STATE INIT ---
-for key, val in [('auth', False), ('username', ''), ('synced', False), ('raw_data', None)]:
+for key, val in [('auth', False), ('username', ''), ('role', 'user'), ('unit', None), ('synced', False), ('raw_data', None)]:
     if key not in st.session_state:
         st.session_state[key] = val
 
@@ -120,9 +131,12 @@ if not st.session_state['auth']:
             
             st.write("")
             if st.button("🚀 MASUK", use_container_width=True, type="primary"):
-                if username in VALID_USERS and VALID_USERS[username] == password:
+                users = load_users()
+                if username in users and users[username]['password'] == password:
                     st.session_state['auth'] = True
                     st.session_state['username'] = username
+                    st.session_state['role'] = users[username].get('role', 'user')
+                    st.session_state['unit'] = users[username].get('unit', None)
                     st.rerun()
                 elif username == "":
                     st.warning("⚠️ Username tidak boleh kosong.")
@@ -246,13 +260,20 @@ with st.sidebar:
 
     st.write("---")
     if st.button("🚪 Logout", use_container_width=True):
-        for k in ['auth', 'username', 'synced', 'raw_data']:
-            st.session_state[k] = False if k == 'auth' else (None if k == 'raw_data' else '')
+        for k in ['auth', 'username', 'role', 'unit', 'synced', 'raw_data']:
+            st.session_state[k] = False if k == 'auth' else (None if k in ['raw_data', 'unit'] else ('user' if k == 'role' else ''))
         st.rerun()
 
 if raw is None:
     st.info("👋 Selamat Datang! Data belum tersedia. Silakan sinkronisasi ulang atau upload file.")
     st.stop()
+
+# DATA FILTER BERDASARKAN USER UNIT
+if st.session_state['role'] == 'user' and st.session_state['unit']:
+    raw = raw[raw['SUB UNIT KERJA'] == st.session_state['unit']]
+    if raw.empty:
+        st.warning(f"⚠️ Tidak ada data untuk unit: {st.session_state['unit']}")
+        st.stop()
 
 # FILTER BULAN
 try:
@@ -497,12 +518,56 @@ fig_stacked = px.bar(
 fig_stacked.update_layout(xaxis_tickangle=-40, height=420)
 st.plotly_chart(fig_stacked, use_container_width=True)
 
-# FOOTER
-st.write("---")
+# --- 7. MODAL / ADDITIONAL PAGES ---
+if st.session_state['role'] == 'admin':
+    with st.sidebar:
+        st.write("---")
+        if st.checkbox("🛠️ Pengaturan User"):
+            st.divider()
+            st.subheader("👥 Manajemen Akun")
+            
+            users = load_users()
+            
+            # Form Tambah User
+            with st.expander("➕ Tambah User Baru"):
+                new_user = st.text_input("Username Baru")
+                new_pass = st.text_input("Password Baru", type="password")
+                new_role = st.selectbox("Role", ["user", "admin"])
+                
+                # Ambil list unit dari data untuk memudahkan input
+                available_units = sorted(st.session_state['raw_data']['SUB UNIT KERJA'].dropna().unique())
+                new_unit = st.selectbox("Unit Kerja", [None] + list(available_units))
+                
+                if st.button("Simpan User"):
+                    if new_user and new_pass:
+                        users[new_user] = {"password": new_pass, "role": new_role, "unit": new_unit}
+                        save_users(users)
+                        st.success(f"User {new_user} berhasil ditambahkan!")
+                        st.rerun()
+                    else:
+                        st.error("Username dan Password wajib diisi")
+            
+            # List User
+            st.write("**Daftar User Aktif:**")
+            for u, info in list(users.items()):
+                col_u, col_d = st.columns([3, 1])
+                col_u.write(f"**{u}** ({info['role']})")
+                if info.get('unit'):
+                    col_u.caption(f"Unit: {info['unit']}")
+                
+                if col_d.button("🗑️", key=f"del_{u}"):
+                    if u != st.session_state['username']:
+                        del users[u]
+                        save_users(users)
+                        st.success(f"User {u} dihapus")
+                        st.rerun()
+                    else:
+                        st.error("Tidak bisa menghapus diri sendiri")
+
 st.markdown("""
 <div style="text-align:center; color:#94a3b8; font-size:12px; padding: 10px;">
     🏛️ LHKPN Monitoring System — Universitas Jambi &nbsp;|&nbsp; 
-    Data bersumber dari e-LHKPN KPK &nbsp;|&nbsp; 
+    Data bersumber from e-LHKPN KPK &nbsp;|&nbsp; 
     Sistem ini bersifat internal dan rahasia
 </div>
 """, unsafe_allow_html=True)

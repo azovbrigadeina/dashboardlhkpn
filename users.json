@@ -1,0 +1,17 @@
+{
+    "admin": {
+        "password": "123456",
+        "role": "admin",
+        "unit": null
+    },
+    "operator": {
+        "password": "unja2025",
+        "role": "admin",
+        "unit": null
+    },
+    "pimpinan": {
+        "password": "lhkpn@unja",
+        "role": "admin",
+        "unit": null
+    }
+}
