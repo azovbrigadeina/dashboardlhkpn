@@ -189,12 +189,28 @@ if st.session_state['role'] == 'admin':
 
 # TABEL & GRAFIK
 st.write("### 📋 Detail Individu")
-col_f1, col_f2 = st.columns([1, 2])
-with col_f1: f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=list(data['ZONA'].unique()))
-with col_f2: f_cari = st.text_input("🔍 Cari Nama / NIK / Unit:")
+col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
+with col_f1: 
+    f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=list(data['ZONA'].unique()))
 
+# Filter Unit khusus Admin
+f_unit = []
+if st.session_state['role'] == 'admin':
+    with col_f2:
+        f_unit = st.multiselect("Filter Unit:", options=sorted(data['SUB UNIT KERJA'].unique()), default=list(data['SUB UNIT KERJA'].unique()))
+else:
+    f_unit = list(data['SUB UNIT KERJA'].unique())
+
+with col_f3: 
+    f_cari = st.text_input("🔍 Cari Nama / NIK / Unit:")
+
+# Jalankan Filter
 df_tabel = data[data['ZONA'].isin(f_zona)]
-if f_cari: df_tabel = df_tabel[df_tabel.apply(lambda row: f_cari.lower() in str(row).lower(), axis=1)]
+df_tabel = df_tabel[df_tabel['SUB UNIT KERJA'].isin(f_unit)]
+
+if f_cari: 
+    df_tabel = df_tabel[df_tabel.apply(lambda row: f_cari.lower() in str(row).lower(), axis=1)]
+
 st.dataframe(df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
 
 # SPOTLIGHT & ANALISIS
