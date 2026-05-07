@@ -57,20 +57,21 @@ def render_spotlight_section(data, dl, dl_rate, total_wl, dl_sisa):
     </div>
     """, unsafe_allow_html=True)
 
-    # Charts for Spotlight
-    sp1, sp2 = st.columns(2)
-    with sp1:
-        dl_unit_df = dl_unit.reset_index().head(10)
-        dl_unit_df.columns = ['SUB UNIT KERJA', 'Diumumkan Lengkap']
-        if not dl_unit_df.empty:
-            st.plotly_chart(px.bar(dl_unit_df, x='Diumumkan Lengkap', y='SUB UNIT KERJA', orientation='h', title="Top 10 Unit — Diumumkan Lengkap", color_discrete_sequence=['#7c3aed']), use_container_width=True)
+    # Charts for Spotlight (ADMIN ONLY)
+    if st.session_state.get('role') == 'admin':
+        sp1, sp2 = st.columns(2)
+        with sp1:
+            dl_unit_df = dl_unit.reset_index().head(10)
+            dl_unit_df.columns = ['SUB UNIT KERJA', 'Diumumkan Lengkap']
+            if not dl_unit_df.empty:
+                st.plotly_chart(px.bar(dl_unit_df, x='Diumumkan Lengkap', y='SUB UNIT KERJA', orientation='h', title="Top 10 Unit — Diumumkan Lengkap", color_discrete_sequence=['#7c3aed']), use_container_width=True)
 
-    with sp2:
-        dl_per_unit = data.groupby('SUB UNIT KERJA').apply(lambda g: pd.Series({'Total': len(g), 'Diumumkan Lengkap': (g['Status LHKPN'].astype(str).str.strip() == 'Diumumkan Lengkap').sum()})).reset_index()
-        dl_per_unit['% Capaian'] = (dl_per_unit['Diumumkan Lengkap'] / dl_per_unit['Total'] * 100).round(1)
-        dl_per_unit = dl_per_unit.sort_values('% Capaian', ascending=False)
-        st.write("**📊 Capaian Diumumkan Lengkap per Unit**")
-        st.dataframe(dl_per_unit[['SUB UNIT KERJA','Total','Diumumkan Lengkap','% Capaian']], use_container_width=True, hide_index=True)
+        with sp2:
+            dl_per_unit = data.groupby('SUB UNIT KERJA').apply(lambda g: pd.Series({'Total': len(g), 'Diumumkan Lengkap': (g['Status LHKPN'].astype(str).str.strip() == 'Diumumkan Lengkap').sum()})).reset_index()
+            dl_per_unit['% Capaian'] = (dl_per_unit['Diumumkan Lengkap'] / dl_per_unit['Total'] * 100).round(1)
+            dl_per_unit = dl_per_unit.sort_values('% Capaian', ascending=False)
+            st.write("**📊 Capaian Diumumkan Lengkap per Unit**")
+            st.dataframe(dl_per_unit[['SUB UNIT KERJA','Total','Diumumkan Lengkap','% Capaian']], use_container_width=True, hide_index=True)
 
 def render_graphical_analysis(data):
     st.write("### 📊 Analisis Grafis per Zona")
