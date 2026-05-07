@@ -4,17 +4,7 @@ import plotly.express as px
 import time
 from modules.data_engine import load_from_gsheet, proses_data_unja
 from modules.auth import load_users, save_users, init_session_state, logout
-from modules.ui_components import inject_custom_css, render_metric_card, render_footer, render_executive_panel
-
-# After executive panel, provide download button for admin users
-if st.session_state.get('role') == 'admin':
-    st.download_button(
-        label="📥 Unduh Laporan Eksekutif",
-        data=generate_executive_report(data),
-        file_name="Laporan_Eksekutif.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key="download_exec_report"
-    )
+from modules.ui_components import inject_custom_css, render_metric_card, render_footer, render_executive_panel, generate_executive_report
 from modules.charts import render_spotlight_section, render_graphical_analysis
 
 # --- 1. CONFIG ---
@@ -194,7 +184,7 @@ if st.session_state['role'] == 'admin':
     u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
     atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
 
-    render_executive_panel(paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
+    render_executive_panel(data, paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
     st.write("")
 
 # TABEL & GRAFIK

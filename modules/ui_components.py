@@ -51,7 +51,7 @@ def render_footer():
     </div>
     """, unsafe_allow_html=True)
 
-def render_executive_panel(paripurna_txt, count_u100, atensi_label, potential_pct):
+def render_executive_panel(data, paripurna_txt, count_u100, atensi_label, potential_pct):
     st.markdown(f"""
     <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;">
         <div style="display:flex;gap:15px;flex-wrap:wrap;">
@@ -73,6 +73,7 @@ def render_executive_panel(paripurna_txt, count_u100, atensi_label, potential_pc
 
     # Add download button for executive report (admin only)
     if st.session_state.get('role') == 'admin' and data is not None:
+        st.write("")
         st.download_button(
             label="📥 Unduh Laporan Eksekutif",
             data=generate_executive_report(data),
