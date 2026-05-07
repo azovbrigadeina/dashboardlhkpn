@@ -70,3 +70,45 @@ def render_executive_panel(paripurna_txt, count_u100, atensi_label, potential_pc
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # Add download button for executive report (admin only)
+    if st.session_state.get('role') == 'admin' and data is not None:
+        st.download_button(
+            label="📥 Unduh Laporan Eksekutif",
+            data=generate_executive_report(data),
+            file_name="Laporan_Eksekutif.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_executive_report"
+        )
+
+def generate_executive_report(data):
+    """Generate an in‑memory Excel workbook containing the full executive report.
+    Includes summary metrics, unit‑level breakdown, and the detailed dataset.
+    Returns a BytesIO object for Streamlit's download_button.
+    """
+    import pandas as pd, io
+    output = io.BytesIO()
+    # Compute metrics needed for the summary sheet
+    total_wl = len(data)
+    h = len(data[data['ZONA'] == "🟢 ZONA HIJAU"])
+    k = len(data[data['ZONA'] == "🟡 ZONA KUNING"])
+    m = len(data[data['ZONA'] == "🔴 ZONA MERAH"])
+    dl = len(data[data['Status LHKPN'].astype(str).str.strip() == "Diumumkan Lengkap"])
+    rate = (h / total_wl * 100) if total_wl > 0 else 0
+    dl_rate = (dl / total_wl * 100) if total_wl > 0 else 0
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Summary sheet
+        summary = pd.DataFrame({
+            "Metric": ["Total Wajib Lapor", "Hijau", "Kuning", "Merah", "Diumumkan Lengkap"],
+            "Count": [total_wl, h, k, m, dl],
+            "Percent": ["", f"{rate:.1f}%", "", "", f"{dl_rate:.1f}%"]
+        })
+        summary.to_excel(writer, sheet_name="Ringkasan", index=False)
+        # Unit breakdown sheet
+        unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack(fill_value=0)
+        unit_stats.to_excel(writer, sheet_name="Statistik Unit")
+        # Detailed data sheet
+        data.to_excel(writer, sheet_name="Data Detail", index=False)
+    output.seek(0)
+    return output

@@ -5,6 +5,16 @@ import time
 from modules.data_engine import load_from_gsheet, proses_data_unja
 from modules.auth import load_users, save_users, init_session_state, logout
 from modules.ui_components import inject_custom_css, render_metric_card, render_footer, render_executive_panel
+
+# After executive panel, provide download button for admin users
+if st.session_state.get('role') == 'admin':
+    st.download_button(
+        label="📥 Unduh Laporan Eksekutif",
+        data=generate_executive_report(data),
+        file_name="Laporan_Eksekutif.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_exec_report"
+    )
 from modules.charts import render_spotlight_section, render_graphical_analysis
 
 # --- 1. CONFIG ---

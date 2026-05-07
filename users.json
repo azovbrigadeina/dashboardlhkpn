@@ -13,5 +13,10 @@
         "password": "lhkpn@unja",
         "role": "admin",
         "unit": null
-    }
+    },
+"hukum": {
+        "password": "123",
+        "role": "user",
+        "unit": Fakultas Hukum
+    },
 }
