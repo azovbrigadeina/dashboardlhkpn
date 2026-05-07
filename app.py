@@ -173,19 +173,19 @@ with m5: render_metric_card("⭐ DIUMUMKAN LENGKAP", dl, f"{dl_rate:.1f}% Paripu
 
 st.write("---")
 
-# PAPAN INFORMASI EKSEKUTIF
-unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
-for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
-    if z not in unit_stats.columns: unit_stats[z] = 0
-unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
-u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
-paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
-u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
-atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
+# PAPAN INFORMASI EKSEKUTIF (ADMIN ONLY)
+if st.session_state['role'] == 'admin':
+    unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
+    for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
+        if z not in unit_stats.columns: unit_stats[z] = 0
+    unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
+    u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
+    paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
+    u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
+    atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
 
-render_executive_panel(paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
-
-st.write("")
+    render_executive_panel(paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
+    st.write("")
 
 # TABEL & GRAFIK
 st.write("### 📋 Detail Individu")
@@ -199,7 +199,9 @@ st.dataframe(df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']]
 
 # SPOTLIGHT & ANALISIS
 render_spotlight_section(data, dl, dl_rate, total_wl, total_wl - dl)
-render_graphical_analysis(data)
+
+if st.session_state['role'] == 'admin':
+    render_graphical_analysis(data)
 
 # PENGATURAN USER (ADMIN ONLY)
 if st.session_state['role'] == 'admin':
