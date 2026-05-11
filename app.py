@@ -6,6 +6,7 @@ from modules.data_engine import load_from_gsheet, proses_data_unja
 from modules.auth import load_users, save_users, init_session_state, logout
 from modules.ui_components import inject_custom_css, render_metric_card, render_footer, render_executive_panel, generate_executive_report
 from modules.charts import render_spotlight_section, render_graphical_analysis
+from modules.telegram_bot import send_telegram_message, get_telegram_link
 
 # --- 1. CONFIG ---
 st.set_page_config(page_title="LHKPN UNJA Monitoring", layout="wide", page_icon="🏛️")
@@ -249,5 +250,114 @@ if st.session_state['role'] == 'admin':
                         del users[u]
                         save_users(users)
                         st.rerun()
+
+# =====================================================================
+# HALAMAN 4: TELEGRAM REMINDER (ADMIN ONLY)
+# =====================================================================
+if st.session_state['role'] == 'admin':
+    with st.sidebar:
+        st.write("---")
+        if st.checkbox("📢 Fitur Reminder Telegram"):
+            st.divider()
+            st.subheader("🤖 Konfigurasi Bot")
+            
+            # Persistent token storage in session state
+            if 'tg_token' not in st.session_state:
+                st.session_state['tg_token'] = ""
+            
+            tg_token = st.text_input("Bot Token (KPK Bot)", value=st.session_state['tg_token'], type="password", help="Dapatkan dari @BotFather")
+            if tg_token != st.session_state['tg_token']:
+                st.session_state['tg_token'] = tg_token
+            
+            st.info("Pesan akan dikirim ke kolom 'TELEGRAM_ID' atau 'NO_HP' jika tersedia di data.")
+
+    # Render main reminder area if checked
+    if st.sidebar.get('tg_reminder_active', False) or (st.session_state['role'] == 'admin' and "📢 Fitur Reminder Telegram" in st.session_state and st.session_state["📢 Fitur Reminder Telegram"]):
+        pass # Handle main rendering below table or in a dedicated section
+
+# Re-checking if the checkbox is active to show the section
+# Streamlit checkboxes in sidebar are accessible via session state if given a key, 
+# but here it's just an if. I'll wrap the logic better.
+if st.session_state['role'] == 'admin':
+    # Since I want to show it in the main area when sidebar checkbox is on
+    # I'll use a better key management
+    pass
+
+# Adding the Reminder UI Section after the table
+if st.session_state['role'] == 'admin':
+    st.write("---")
+    with st.expander("📢 PUSAT REMINDER TELEGRAM", expanded=False):
+        st.markdown("### 📨 Kirim Pengingat LHKPN")
+        
+        # Filter for Kuning & Merah only for reminder
+        remind_data = data[data['ZONA'].isin(["🟡 ZONA KUNING", "🔴 ZONA MERAH"])]
+        
+        col_r1, col_r2 = st.columns([2, 1])
+        with col_r1:
+            st.write(f"Ditemukan **{len(remind_data)}** orang yang belum tuntas (Kuning/Merah).")
+        with col_r2:
+            blast_btn = st.button("🚀 BLAST SEMUA (BOT)", use_container_width=True, type="primary", help="Kirim pesan otomatis via Bot ke semua yang punya ID Telegram")
+
+        if blast_btn:
+            if not st.session_state.get('tg_token'):
+                st.error("⚠️ Bot Token belum diisi di sidebar!")
+            else:
+                success_count = 0
+                fail_count = 0
+                progress_text = "Mengirim blast..."
+                my_bar = st.progress(0, text=progress_text)
+                
+                # Assume columns 'ID_TELEGRAM' or 'CHAT_ID' exist or will be added
+                # Fallback to empty if not exists
+                tg_col = 'ID_TELEGRAM' if 'ID_TELEGRAM' in remind_data.columns else ('CHAT_ID' if 'CHAT_ID' in remind_data.columns else None)
+                
+                if not tg_col:
+                    st.warning("⚠️ Kolom ID_TELEGRAM tidak ditemukan dalam data. Pastikan Google Sheet sudah diperbarui.")
+                else:
+                    for i, (idx, row) in enumerate(remind_data.iterrows()):
+                        chat_id = row.get(tg_col)
+                        if pd.notna(chat_id) and str(chat_id).strip():
+                            msg = f"<b>PENGINGAT LHKPN UNJA</b>\n\nYth. Bapak/Ibu <b>{row['NAMA']}</b>,\n\nStatus LHKPN Anda saat ini: <b>{row['Status LHKPN']}</b>.\nMohon segera melengkapi pengisian LHKPN sesuai kondisi terbaru.\n\nTerima kasih."
+                            ok, res = send_telegram_message(st.session_state['tg_token'], str(chat_id), msg)
+                            if ok: success_count += 1
+                            else: fail_count += 1
+                        
+                        my_bar.progress((i + 1) / len(remind_data), text=f"Proses: {i+1}/{len(remind_data)}")
+                    
+                    st.success(f"✅ Blast selesai! Berhasil: {success_count}, Gagal: {fail_count}")
+
+        st.divider()
+        st.write("#### 👤 Daftar Individu (Kuning/Merah)")
+        
+        # Display list with manual remind buttons
+        for idx, row in remind_data.head(20).iterrows(): # Limit display for performance
+            c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+            c1.write(f"**{row['NAMA']}**")
+            c2.write(f"{row['ZONA']}")
+            
+            # Individual Bot Send
+            tg_col = 'ID_TELEGRAM' if 'ID_TELEGRAM' in remind_data.columns else ('CHAT_ID' if 'CHAT_ID' in remind_data.columns else None)
+            chat_id = row.get(tg_col) if tg_col else None
+            
+            if c3.button("🤖 Bot", key=f"bot_{idx}", disabled=not chat_id or not st.session_state.get('tg_token')):
+                msg = f"Yth. {row['NAMA']}, mohon segera update LHKPN Anda (Status: {row['Status LHKPN']}). Terima kasih."
+                ok, res = send_telegram_message(st.session_state['tg_token'], str(chat_id), msg)
+                if ok: st.toast(f"✅ Terkirim ke {row['NAMA']}")
+                else: st.error(f"❌ {res}")
+            
+            # Manual Web Link
+            # Assume phone number column is 'NO_HP' or 'PHONE'
+            phone_col = 'NO_HP' if 'NO_HP' in remind_data.columns else ('PHONE' if 'PHONE' in remind_data.columns else None)
+            phone = row.get(phone_col) if phone_col else None
+            
+            if phone:
+                msg_manual = f"Halo {row['NAMA']}, ini pengingat LHKPN UNJA. Status Anda: {row['Status LHKPN']}. Mohon segera dilengkapi."
+                link = get_telegram_link(phone, msg_manual)
+                c4.markdown(f'<a href="{link}" target="_blank"><button style="width:100%; border-radius:4px; border:1px solid #ddd; background:#f0f2f6; cursor:pointer;">📱 Manual</button></a>', unsafe_allow_html=True)
+            else:
+                c4.write("🚫 No HP")
+
+        if len(remind_data) > 20:
+            st.info(f"Menampilkan 20 dari {len(remind_data)} orang. Gunakan filter tabel untuk mencari spesifik.")
 
 render_footer()
