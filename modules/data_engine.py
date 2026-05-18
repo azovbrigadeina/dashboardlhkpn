@@ -33,5 +33,9 @@ def proses_data_unja(df, filter_bulan):
 
     if filter_bulan != "GLOBAL (AKUMULASI)":
         df = df[df['BULAN'].astype(str).str.strip().str.upper() == filter_bulan]
+    elif not df.empty and 'BULAN' in df.columns:
+        latest_month = df['BULAN'].iloc[-1]
+        valid_niks = df[df['BULAN'] == latest_month]['NIK_KEY'].unique()
+        df = df[df['NIK_KEY'].isin(valid_niks)]
 
     return df.sort_values('rank').drop_duplicates(subset=['NIK_KEY'], keep='first')
