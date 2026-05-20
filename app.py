@@ -230,27 +230,58 @@ if st.session_state['role'] == 'pimpinan':
     unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
     for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
         if z not in unit_stats.columns: unit_stats[z] = 0
-    unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
-    u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
-    u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
+    unit_stats['Total'] = unit_stats.sum(axis=1)
+    unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats['Total'] * 100).round(1)
+
+    # Apresiasi: Top 3 unit dengan tingkat lapor terbaik periode ini (bukan harus 100%)
+    top3_apresiasi = unit_stats.sort_values('Persen_Hijau', ascending=False).head(3)
+    apresiasi_items = [
+        f"{nama} ({row['Persen_Hijau']:.1f}%)"
+        for nama, row in top3_apresiasi.iterrows()
+    ]
+
+    # Atensi: Unit yang benar-benar tidak ada pergerakan (0 Hijau + 0 Kuning = semua Merah)
+    u_stagnan = unit_stats[
+        (unit_stats['🟢 ZONA HIJAU'] == 0) & (unit_stats['🟡 ZONA KUNING'] == 0)
+    ].sort_values('Total', ascending=False)
+    # Fallback ke unit terendah jika tidak ada yang stagnan total
+    if u_stagnan.empty:
+        u_stagnan = unit_stats[unit_stats['Persen_Hijau'] < unit_stats['Persen_Hijau'].max()].sort_values('Persen_Hijau').head(3)
+        atensi_label = "terendah"
+    else:
+        atensi_label = "stagnan"
+    atensi_items = [
+        f"{nama} ({row['Persen_Hijau']:.1f}%)"
+        for nama, row in u_stagnan.head(3).iterrows()
+    ]
 
     pimp_c1, pimp_c2 = st.columns(2)
     with pimp_c1:
+        apresiasi_html = "".join(
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+            f'<span style="font-size:18px;">{["🥇","🥈","🥉"][i]}</span>'
+            f'<span style="font-size:13px;font-weight:600;color:#166534;">{txt}</span></div>'
+            for i, txt in enumerate(apresiasi_items)
+        )
+        period_lbl = sel_bln if sel_bln != "GLOBAL (AKUMULASI)" else "Akumulasi"
         st.markdown(f"""
         <div style="background:white; border:2px solid #bbf7d0; border-radius:12px; padding:18px;">
-            <div style="font-size:15px; font-weight:700; color:#166534; margin-bottom:8px;">🏆 Unit Paripurna (100% Patuh)</div>
-            <div style="font-size:28px; font-weight:900; color:#22c55e; margin-bottom:4px;">{len(u_100)} Unit</div>
-            <div style="font-size:13px; color:#64748b;">{', '.join(u_100[:3]) + ('...' if len(u_100) > 3 else '') if u_100 else 'Belum ada unit yang 100% patuh'}</div>
+            <div style="font-size:15px; font-weight:700; color:#166534; margin-bottom:10px;">🏆 Apresiasi — Unit Terbaik ({period_lbl})</div>
+            {apresiasi_html}
         </div>
         """, unsafe_allow_html=True)
     with pimp_c2:
-        worst_name = u_rendah.index[0] if not u_rendah.empty else "-"
-        worst_pct = f"{u_rendah.iloc[0]['Persen_Hijau']:.1f}%" if not u_rendah.empty else "-"
+        atensi_html = "".join(
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+            f'<span style="font-size:16px;">⚠️</span>'
+            f'<span style="font-size:13px;font-weight:600;color:#991b1b;">{txt}</span></div>'
+            for txt in atensi_items
+        ) if atensi_items else '<div style="color:#64748b;font-size:13px;">Semua unit ada pergerakan 👏</div>'
+        atensi_judul = "Tidak Ada Pergerakan" if atensi_label == "stagnan" else "Perlu Didorong (Terendah)"
         st.markdown(f"""
         <div style="background:white; border:2px solid #fecaca; border-radius:12px; padding:18px;">
-            <div style="font-size:15px; font-weight:700; color:#991b1b; margin-bottom:8px;">⚠️ Unit Butuh Atensi (Terendah)</div>
-            <div style="font-size:20px; font-weight:800; color:#ef4444; margin-bottom:4px;">{worst_name}</div>
-            <div style="font-size:13px; color:#64748b;">Tingkat kepatuhan: <b>{worst_pct}</b></div>
+            <div style="font-size:15px; font-weight:700; color:#991b1b; margin-bottom:10px;">🚨 Atensi — {atensi_judul} ({period_lbl})</div>
+            {atensi_html}
         </div>
         """, unsafe_allow_html=True)
 
@@ -301,16 +332,22 @@ else:
 
     # PAPAN INFORMASI EKSEKUTIF (ADMIN ONLY)
     if st.session_state['role'] == 'admin':
-        unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
+        unit_stats_adm = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
         for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
-            if z not in unit_stats.columns: unit_stats[z] = 0
-        unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
-        u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
-        paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
-        u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
-        atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
+            if z not in unit_stats_adm.columns: unit_stats_adm[z] = 0
+        unit_stats_adm['Persen_Hijau'] = (unit_stats_adm['🟢 ZONA HIJAU'] / unit_stats_adm.sum(axis=1) * 100).round(1)
+        # Apresiasi admin: top 3 unit terbaik periode ini
+        top3_adm = unit_stats_adm.sort_values('Persen_Hijau', ascending=False).head(3)
+        paripurna_txt = ", ".join([f"{n} ({r['Persen_Hijau']:.1f}%)" for n, r in top3_adm.iterrows()])
+        # Atensi admin: stagnan total, fallback ke terendah
+        u_stagnan_adm = unit_stats_adm[
+            (unit_stats_adm['🟢 ZONA HIJAU'] == 0) & (unit_stats_adm['🟡 ZONA KUNING'] == 0)
+        ]
+        if u_stagnan_adm.empty:
+            u_stagnan_adm = unit_stats_adm.sort_values('Persen_Hijau').head(1)
+        atensi_label = f"Unit <b>{u_stagnan_adm.index[0]}</b> ({u_stagnan_adm.iloc[0]['Persen_Hijau']:.1f}%)" if not u_stagnan_adm.empty else "Semua Unit Ada Pergerakan"
 
-        render_executive_panel(data, paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
+        render_executive_panel(data, paripurna_txt, len(top3_adm), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
         st.write("")
 
     # TABEL & GRAFIK
