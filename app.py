@@ -158,52 +158,170 @@ rate = (h / total_wl * 100) if total_wl > 0 else 0
 dl = len(data[data['Status LHKPN'].astype(str).str.strip() == "Diumumkan Lengkap"])
 dl_rate = (dl / total_wl * 100) if total_wl > 0 else 0
 
-# HEADER
-st.title("🏛️ Dashboard LHKPN Monitoring — Universitas Jambi")
-st.caption(f"Periode: **{sel_bln}** | Pengguna: **{st.session_state['username'].upper()}**")
-st.write("---")
+# =====================================================================
+# PIMPINAN: DASHBOARD SIMPEL & RINGKAS
+# =====================================================================
+if st.session_state['role'] == 'pimpinan':
 
-# METRIK CARDS
-m1, m2, m3, m4, m5 = st.columns(5)
-with m1: render_metric_card("WAJIB LAPOR", total_wl, "Orang", "#3b82f6", "#3b82f6")
-with m2: render_metric_card("🟢 HIJAU", h, f"{rate:.1f}% Tuntas", "#22c55e", "#22c55e")
-with m3: render_metric_card("🟡 KUNING", k, "Status Draft", "#f59e0b", "#f59e0b")
-with m4: render_metric_card("🔴 MERAH", m, "Belum Lapor", "#ef4444", "#ef4444")
-with m5: render_metric_card("⭐ DIUMUMKAN LENGKAP", dl, f"{dl_rate:.1f}% Paripurna", "#7c3aed", "#7c3aed")
+    # HEADER PIMPINAN
+    st.markdown(f"""
+    <div style="text-align:center; padding: 10px 0 5px 0;">
+        <h2 style="color:#1e3a5f; margin:0;">📊 Ringkasan Kepatuhan LHKPN</h2>
+        <p style="color:#64748b; font-size:15px;">Universitas Jambi — Periode: <b>{sel_bln}</b></p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.write("")
 
-st.write("---")
+    # --- BAGIAN 1: INDIKATOR UTAMA (BESAR & JELAS) ---
+    col_main1, col_main2 = st.columns([1, 1])
 
-# PAPAN INFORMASI EKSEKUTIF (ADMIN & PIMPINAN)
-if st.session_state['role'] in ['admin', 'pimpinan']:
+    with col_main1:
+        # Donut chart besar — langsung terlihat persentase kepatuhan
+        import plotly.graph_objects as go
+        fig_donut = go.Figure(data=[go.Pie(
+            labels=["Sudah Lapor (Hijau)", "Draft (Kuning)", "Belum Lapor (Merah)"],
+            values=[h, k, m],
+            hole=0.65,
+            marker=dict(colors=["#22c55e", "#f59e0b", "#ef4444"]),
+            textinfo="label+percent",
+            textfont_size=13,
+            hoverinfo="label+value+percent"
+        )])
+        fig_donut.update_layout(
+            showlegend=False,
+            margin=dict(t=10, b=10, l=10, r=10),
+            height=300,
+            annotations=[dict(
+                text=f"<b>{rate:.0f}%</b><br><span style='font-size:12px;color:#64748b'>Kepatuhan</span>",
+                x=0.5, y=0.5, font_size=28, showarrow=False, font_color="#1e3a5f"
+            )]
+        )
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+    with col_main2:
+        # Angka-angka besar yang mudah dibaca pimpinan
+        st.markdown(f"""
+        <div style="padding: 10px 0;">
+            <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7); border:2px solid #86efac; border-radius:14px; padding:18px; margin-bottom:12px; text-align:center;">
+                <div style="font-size:14px; color:#166534; font-weight:600;">✅ TINGKAT KEPATUHAN</div>
+                <div style="font-size:42px; font-weight:900; color:#166534;">{rate:.1f}%</div>
+                <div style="font-size:13px; color:#4ade80;"><b>{h}</b> dari <b>{total_wl}</b> orang sudah melapor</div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:14px; text-align:center;">
+                    <div style="font-size:28px; font-weight:800; color:#d97706;">{k}</div>
+                    <div style="font-size:11px; color:#92400e; font-weight:600;">🟡 DRAFT</div>
+                </div>
+                <div style="flex:1; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:14px; text-align:center;">
+                    <div style="font-size:28px; font-weight:800; color:#dc2626;">{m}</div>
+                    <div style="font-size:11px; color:#991b1b; font-weight:600;">🔴 BELUM LAPOR</div>
+                </div>
+                <div style="flex:1; background:#f5f3ff; border:1px solid #c4b5fd; border-radius:10px; padding:14px; text-align:center;">
+                    <div style="font-size:28px; font-weight:800; color:#7c3aed;">{dl}</div>
+                    <div style="font-size:11px; color:#5b21b6; font-weight:600;">⭐ PARIPURNA</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("---")
+
+    # --- BAGIAN 2: INFO EKSEKUTIF RINGKAS ---
     unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
     for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
         if z not in unit_stats.columns: unit_stats[z] = 0
     unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
     u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
-    paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
     u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
-    atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
 
-    render_executive_panel(data, paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
+    pimp_c1, pimp_c2 = st.columns(2)
+    with pimp_c1:
+        st.markdown(f"""
+        <div style="background:white; border:2px solid #bbf7d0; border-radius:12px; padding:18px;">
+            <div style="font-size:15px; font-weight:700; color:#166534; margin-bottom:8px;">🏆 Unit Paripurna (100% Patuh)</div>
+            <div style="font-size:28px; font-weight:900; color:#22c55e; margin-bottom:4px;">{len(u_100)} Unit</div>
+            <div style="font-size:13px; color:#64748b;">{', '.join(u_100[:3]) + ('...' if len(u_100) > 3 else '') if u_100 else 'Belum ada unit yang 100% patuh'}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with pimp_c2:
+        worst_name = u_rendah.index[0] if not u_rendah.empty else "-"
+        worst_pct = f"{u_rendah.iloc[0]['Persen_Hijau']:.1f}%" if not u_rendah.empty else "-"
+        st.markdown(f"""
+        <div style="background:white; border:2px solid #fecaca; border-radius:12px; padding:18px;">
+            <div style="font-size:15px; font-weight:700; color:#991b1b; margin-bottom:8px;">⚠️ Unit Butuh Atensi (Terendah)</div>
+            <div style="font-size:20px; font-weight:800; color:#ef4444; margin-bottom:4px;">{worst_name}</div>
+            <div style="font-size:13px; color:#64748b;">Tingkat kepatuhan: <b>{worst_pct}</b></div>
+        </div>
+        """, unsafe_allow_html=True)
+
     st.write("")
 
-# TABEL & GRAFIK
-is_pimpinan = st.session_state['role'] == 'pimpinan'
+    # --- BAGIAN 3: DETAIL LANJUTAN (KLIK UNTUK MELIHAT) ---
+    with st.expander("📊 Lihat Grafik Analisis per Zona", expanded=False):
+        render_graphical_analysis(data)
 
-if is_pimpinan:
-    detail_container = st.expander("📋 Tampilkan Detail Data Individu", expanded=False)
+    with st.expander("⭐ Lihat Detail Capaian Diumumkan Lengkap", expanded=False):
+        render_spotlight_section(data, dl, dl_rate, total_wl, total_wl - dl)
+
+    with st.expander("📋 Lihat Detail Data Individu", expanded=False):
+        col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
+        with col_f1:
+            f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=list(data['ZONA'].unique()), key="pimp_zona")
+        with col_f2:
+            f_unit = st.multiselect("Filter Unit:", options=sorted(data['SUB UNIT KERJA'].unique()), default=list(data['SUB UNIT KERJA'].unique()), key="pimp_unit")
+        with col_f3:
+            f_cari = st.text_input("🔍 Cari Nama / NIK / Unit:", key="pimp_cari")
+
+        df_tabel = data[data['ZONA'].isin(f_zona)]
+        df_tabel = df_tabel[df_tabel['SUB UNIT KERJA'].isin(f_unit)]
+        if f_cari:
+            df_tabel = df_tabel[df_tabel.apply(lambda row: f_cari.lower() in str(row).lower(), axis=1)]
+
+        st.dataframe(df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
+
+# =====================================================================
+# ADMIN & USER: DASHBOARD DETAIL (TAMPILAN ASLI)
+# =====================================================================
 else:
-    detail_container = st.container()
 
-with detail_container:
+    # HEADER
+    st.title("🏛️ Dashboard LHKPN Monitoring — Universitas Jambi")
+    st.caption(f"Periode: **{sel_bln}** | Pengguna: **{st.session_state['username'].upper()}**")
+    st.write("---")
+
+    # METRIK CARDS
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1: render_metric_card("WAJIB LAPOR", total_wl, "Orang", "#3b82f6", "#3b82f6")
+    with m2: render_metric_card("🟢 HIJAU", h, f"{rate:.1f}% Tuntas", "#22c55e", "#22c55e")
+    with m3: render_metric_card("🟡 KUNING", k, "Status Draft", "#f59e0b", "#f59e0b")
+    with m4: render_metric_card("🔴 MERAH", m, "Belum Lapor", "#ef4444", "#ef4444")
+    with m5: render_metric_card("⭐ DIUMUMKAN LENGKAP", dl, f"{dl_rate:.1f}% Paripurna", "#7c3aed", "#7c3aed")
+
+    st.write("---")
+
+    # PAPAN INFORMASI EKSEKUTIF (ADMIN ONLY)
+    if st.session_state['role'] == 'admin':
+        unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
+        for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
+            if z not in unit_stats.columns: unit_stats[z] = 0
+        unit_stats['Persen_Hijau'] = (unit_stats['🟢 ZONA HIJAU'] / unit_stats.sum(axis=1)) * 100
+        u_100 = unit_stats[unit_stats['Persen_Hijau'] == 100].index.tolist()
+        paripurna_txt = ", ".join(u_100[:2]) + ("..." if len(u_100) > 2 else "") if u_100 else "Belum Ada"
+        u_rendah = unit_stats[unit_stats['Persen_Hijau'] < 100].sort_values(by='Persen_Hijau')
+        atensi_label = f"Unit <b>{u_rendah.index[0]}</b> ({u_rendah.iloc[0]['Persen_Hijau']:.1f}%)" if not u_rendah.empty else "Semua Unit 100%"
+
+        render_executive_panel(data, paripurna_txt, len(u_100), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
+        st.write("")
+
+    # TABEL & GRAFIK
     st.write("### 📋 Detail Individu")
     col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
     with col_f1: 
         f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=list(data['ZONA'].unique()))
 
-    # Filter Unit khusus Admin & Pimpinan
+    # Filter Unit khusus Admin
     f_unit = []
-    if st.session_state['role'] in ['admin', 'pimpinan']:
+    if st.session_state['role'] == 'admin':
         with col_f2:
             f_unit = st.multiselect("Filter Unit:", options=sorted(data['SUB UNIT KERJA'].unique()), default=list(data['SUB UNIT KERJA'].unique()))
     else:
@@ -221,11 +339,11 @@ with detail_container:
 
     st.dataframe(df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
 
-# SPOTLIGHT & ANALISIS
-render_spotlight_section(data, dl, dl_rate, total_wl, total_wl - dl)
+    # SPOTLIGHT & ANALISIS
+    render_spotlight_section(data, dl, dl_rate, total_wl, total_wl - dl)
 
-if st.session_state['role'] in ['admin', 'pimpinan']:
-    render_graphical_analysis(data)
+    if st.session_state['role'] == 'admin':
+        render_graphical_analysis(data)
 
 # PENGATURAN USER & EMAIL BLAST (ADMIN ONLY)
 if st.session_state['role'] == 'admin':
