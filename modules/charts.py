@@ -76,20 +76,44 @@ def render_spotlight_section(data, dl, dl_rate, total_wl, dl_sisa):
             # Chart berdasarkan % rasio (adil untuk semua unit)
             dl_chart = dl_per_unit_sorted.head(10).copy()
             dl_chart.columns = ['SUB UNIT KERJA', 'Total', 'Diumumkan Lengkap', '% Capaian']
+            dl_chart['Label'] = dl_chart.apply(
+                lambda r: f"{int(r['Diumumkan Lengkap'])}/{int(r['Total'])} ({r['% Capaian']:.1f}%)", axis=1
+            )
             if not dl_chart.empty:
-                st.plotly_chart(
-                    px.bar(
-                        dl_chart.sort_values('% Capaian'),
-                        x='% Capaian', y='SUB UNIT KERJA', orientation='h',
-                        title="Top 10 Unit — % Rasio Diumumkan Lengkap",
-                        color='% Capaian',
-                        color_continuous_scale=['#7c3aed','#22c55e'],
-                        range_color=[0, 100],
-                        text='% Capaian',
-                        hover_data=['Diumumkan Lengkap', 'Total']
-                    ).update_traces(texttemplate='%{text:.1f}%', textposition='outside'),
-                    use_container_width=True
+                fig_top10 = px.bar(
+                    dl_chart.sort_values('% Capaian'),
+                    x='% Capaian', y='SUB UNIT KERJA', orientation='h',
+                    title="🏅 Top 10 Unit — Rasio Diumumkan Lengkap",
+                    color='% Capaian',
+                    color_continuous_scale=['#a855f7', '#22c55e'],
+                    range_color=[0, 100],
+                    text='Label',
+                    custom_data=['Diumumkan Lengkap', 'Total', 'Label']
                 )
+                fig_top10.update_traces(
+                    texttemplate='%{text}',
+                    textposition='outside',
+                    hovertemplate=(
+                        '<b>%{y}</b><br>'
+                        'Diumumkan Lengkap: %{customdata[0]} orang<br>'
+                        'Total Wajib Lapor: %{customdata[1]} orang<br>'
+                        'Rasio: <b>%{customdata[2]}</b><extra></extra>'
+                    )
+                )
+                fig_top10.update_layout(
+                    xaxis=dict(range=[0, 125], title='% Capaian'),
+                    yaxis=dict(title=''),
+                    coloraxis_showscale=False,
+                    margin=dict(r=20),
+                    height=360,
+                )
+                # Garis referensi 100%
+                fig_top10.add_vline(
+                    x=100, line_dash='dash', line_color='#ef4444', line_width=1.5,
+                    annotation_text='100%', annotation_position='top',
+                    annotation_font_color='#ef4444'
+                )
+                st.plotly_chart(fig_top10, use_container_width=True)
 
         with sp2:
             # Tabel lengkap — diurutkan berdasarkan % rasio
