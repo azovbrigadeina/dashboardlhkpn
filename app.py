@@ -3,10 +3,9 @@ import pandas as pd
 import plotly.express as px
 import time
 from modules.data_engine import load_from_gsheet, proses_data_unja
-from modules.auth import load_users, save_users, init_session_state, logout
+from modules.auth import load_users, save_users, init_session_state, logout, load_settings, save_settings, send_email_via_gas
 from modules.ui_components import inject_custom_css, render_metric_card, render_footer, render_executive_panel, generate_executive_report
 from modules.charts import render_spotlight_section, render_graphical_analysis
-from modules.telegram_bot import send_telegram_message, get_telegram_link
 
 # --- 1. CONFIG ---
 st.set_page_config(page_title="LHKPN UNJA Monitoring", layout="wide", page_icon="🏛️")
@@ -174,8 +173,8 @@ with m5: render_metric_card("⭐ DIUMUMKAN LENGKAP", dl, f"{dl_rate:.1f}% Paripu
 
 st.write("---")
 
-# PAPAN INFORMASI EKSEKUTIF (ADMIN ONLY)
-if st.session_state['role'] == 'admin':
+# PAPAN INFORMASI EKSEKUTIF (ADMIN & PIMPINAN)
+if st.session_state['role'] in ['admin', 'pimpinan']:
     unit_stats = data.groupby('SUB UNIT KERJA')['ZONA'].value_counts().unstack().fillna(0)
     for z in ["🟢 ZONA HIJAU", "🟡 ZONA KUNING", "🔴 ZONA MERAH"]:
         if z not in unit_stats.columns: unit_stats[z] = 0
@@ -189,49 +188,63 @@ if st.session_state['role'] == 'admin':
     st.write("")
 
 # TABEL & GRAFIK
-st.write("### 📋 Detail Individu")
-col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
-with col_f1: 
-    f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=list(data['ZONA'].unique()))
+is_pimpinan = st.session_state['role'] == 'pimpinan'
 
-# Filter Unit khusus Admin
-f_unit = []
-if st.session_state['role'] == 'admin':
-    with col_f2:
-        f_unit = st.multiselect("Filter Unit:", options=sorted(data['SUB UNIT KERJA'].unique()), default=list(data['SUB UNIT KERJA'].unique()))
+if is_pimpinan:
+    detail_container = st.expander("📋 Tampilkan Detail Data Individu", expanded=False)
 else:
-    f_unit = list(data['SUB UNIT KERJA'].unique())
+    detail_container = st.container()
 
-with col_f3: 
-    f_cari = st.text_input("🔍 Cari Nama / NIK / Unit:")
+with detail_container:
+    st.write("### 📋 Detail Individu")
+    col_f1, col_f2, col_f3 = st.columns([1, 1, 2])
+    with col_f1: 
+        f_zona = st.multiselect("Filter Zona:", options=data['ZONA'].unique(), default=list(data['ZONA'].unique()))
 
-# Jalankan Filter
-df_tabel = data[data['ZONA'].isin(f_zona)]
-df_tabel = df_tabel[df_tabel['SUB UNIT KERJA'].isin(f_unit)]
+    # Filter Unit khusus Admin & Pimpinan
+    f_unit = []
+    if st.session_state['role'] in ['admin', 'pimpinan']:
+        with col_f2:
+            f_unit = st.multiselect("Filter Unit:", options=sorted(data['SUB UNIT KERJA'].unique()), default=list(data['SUB UNIT KERJA'].unique()))
+    else:
+        f_unit = list(data['SUB UNIT KERJA'].unique())
 
-if f_cari: 
-    df_tabel = df_tabel[df_tabel.apply(lambda row: f_cari.lower() in str(row).lower(), axis=1)]
+    with col_f3: 
+        f_cari = st.text_input("🔍 Cari Nama / NIK / Unit:")
 
-st.dataframe(df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
+    # Jalankan Filter
+    df_tabel = data[data['ZONA'].isin(f_zona)]
+    df_tabel = df_tabel[df_tabel['SUB UNIT KERJA'].isin(f_unit)]
+
+    if f_cari: 
+        df_tabel = df_tabel[df_tabel.apply(lambda row: f_cari.lower() in str(row).lower(), axis=1)]
+
+    st.dataframe(df_tabel[['NAMA', 'NIK', 'SUB UNIT KERJA', 'Status LHKPN', 'ZONA']], use_container_width=True, hide_index=True)
 
 # SPOTLIGHT & ANALISIS
 render_spotlight_section(data, dl, dl_rate, total_wl, total_wl - dl)
 
-if st.session_state['role'] == 'admin':
+if st.session_state['role'] in ['admin', 'pimpinan']:
     render_graphical_analysis(data)
 
-# PENGATURAN USER (ADMIN ONLY)
+# PENGATURAN USER & EMAIL BLAST (ADMIN ONLY)
 if st.session_state['role'] == 'admin':
     with st.sidebar:
         st.write("---")
-        if st.checkbox("🛠️ Pengaturan User"):
+        show_admin_settings = st.checkbox("🛠️ Pengaturan Aplikasi", key="show_admin_settings")
+        show_email_reminder = st.checkbox("📢 Fitur Reminder Email", key="show_email_reminder")
+
+    if show_admin_settings:
+        with st.sidebar:
             st.divider()
+            
+            # Sub-menu 1: Manajemen User
             st.subheader("👥 Manajemen Akun")
             users = load_users()
             with st.expander("➕ Tambah User Baru"):
                 new_user = st.text_input("Username Baru")
                 new_pass = st.text_input("Password Baru", type="password")
-                new_role = st.selectbox("Role", ["user", "admin"])
+                new_role = st.selectbox("Role", ["user", "admin", "pimpinan"])
                 available_units = sorted(st.session_state['raw_data']['SUB UNIT KERJA'].dropna().unique())
                 new_unit = st.selectbox("Unit Kerja", [None] + list(available_units))
                 if st.button("Simpan User"):
@@ -251,83 +264,94 @@ if st.session_state['role'] == 'admin':
                         save_users(users)
                         st.rerun()
 
-# =====================================================================
-# HALAMAN 4: TELEGRAM REMINDER (ADMIN ONLY)
-# =====================================================================
-if st.session_state['role'] == 'admin':
-    with st.sidebar:
-        st.write("---")
-        if st.checkbox("📢 Fitur Reminder Telegram"):
+            # Sub-menu 2: Pengaturan Email
             st.divider()
-            st.subheader("🤖 Konfigurasi Bot")
+            st.subheader("✉️ Pengaturan Email")
+            settings = load_settings()
             
-            # Persistent token storage in session state
-            if 'tg_token' not in st.session_state:
-                st.session_state['tg_token'] = ""
+            email_subject = st.text_input("Subjek Email Blast", value=settings.get("email_subject", "PENGINGAT: Pengisian LHKPN Universitas Jambi"))
+            email_body = st.text_area("Template Isi Email", value=settings.get("email_body", ""), height=220, help="Gunakan {NAMA}, {STATUS_LHKPN}, dan {BULAN} sebagai variabel.")
             
-            tg_token = st.text_input("Bot Token (KPK Bot)", value=st.session_state['tg_token'], type="password", help="Dapatkan dari @BotFather")
-            if tg_token != st.session_state['tg_token']:
-                st.session_state['tg_token'] = tg_token
-            
-            st.info("Pesan akan dikirim ke kolom 'TELEGRAM_ID' atau 'NO_HP' jika tersedia di data.")
+            if st.button("Simpan Pengaturan Email"):
+                settings['email_subject'] = email_subject
+                settings['email_body'] = email_body
+                if save_settings(settings):
+                    st.success("Pengaturan email disimpan!")
+                    st.rerun()
 
-    # Render main reminder area if checked
-    if st.sidebar.get('tg_reminder_active', False) or (st.session_state['role'] == 'admin' and "📢 Fitur Reminder Telegram" in st.session_state and st.session_state["📢 Fitur Reminder Telegram"]):
-        pass # Handle main rendering below table or in a dedicated section
-
-# Re-checking if the checkbox is active to show the section
-# Streamlit checkboxes in sidebar are accessible via session state if given a key, 
-# but here it's just an if. I'll wrap the logic better.
-if st.session_state['role'] == 'admin':
-    # Since I want to show it in the main area when sidebar checkbox is on
-    # I'll use a better key management
-    pass
-
-# Adding the Reminder UI Section after the table
-if st.session_state['role'] == 'admin':
+# =====================================================================
+# EMAIL REMINDER SECTION (ADMIN ONLY)
+# =====================================================================
+if st.session_state['role'] == 'admin' and st.session_state.get("show_email_reminder"):
     st.write("---")
-    with st.expander("📢 PUSAT REMINDER TELEGRAM", expanded=False):
-        st.markdown("### 📨 Kirim Pengingat LHKPN")
+    with st.expander("📢 PUSAT REMINDER EMAIL", expanded=True):
+        st.markdown("### 📨 Kirim Pengingat LHKPN via Email")
         
-        # Filter for Kuning & Merah only for reminder
+        # Load Email Templates
+        settings = load_settings()
+        subj_template = settings.get("email_subject", "PENGINGAT: Pengisian LHKPN Universitas Jambi")
+        body_template = settings.get("email_body", "")
+        
+        # Filter for Kuning & Merah only for email reminder
         remind_data = data[data['ZONA'].isin(["🟡 ZONA KUNING", "🔴 ZONA MERAH"])]
+        
+        # Cari kolom email yang cocok di data
+        email_col = None
+        for col_name in ['EMAIL', 'E-MAIL', 'EMAIL_UNJA', 'EMAIL ADDRESS', 'SURAT ELEKTRONIK']:
+            match = [c for c in remind_data.columns if c.strip().upper() == col_name]
+            if match:
+                email_col = match[0]
+                break
+        
+        if not email_col:
+            match = [c for c in remind_data.columns if 'email' in c.lower()]
+            if match:
+                email_col = match[0]
         
         col_r1, col_r2 = st.columns([2, 1])
         with col_r1:
             st.write(f"Ditemukan **{len(remind_data)}** orang yang belum tuntas (Kuning/Merah).")
+            if not email_col:
+                st.warning("⚠️ Kolom email tidak ditemukan dalam data (misal: 'EMAIL'). Tambahkan kolom email di Google Sheet Anda agar blast dapat dilakukan.")
+        
         with col_r2:
-            blast_btn = st.button("🚀 BLAST SEMUA (BOT)", use_container_width=True, type="primary", help="Kirim pesan otomatis via Bot ke semua yang punya ID Telegram")
+            blast_btn = st.button("🚀 BLAST EMAIL (GMAIL)", use_container_width=True, type="primary", disabled=not email_col or len(remind_data) == 0, help="Kirim email massal otomatis dari akun Gmail Anda")
 
-        if blast_btn:
-            if not st.session_state.get('tg_token'):
-                st.error("⚠️ Bot Token belum diisi di sidebar!")
-            else:
-                success_count = 0
-                fail_count = 0
-                progress_text = "Mengirim blast..."
-                my_bar = st.progress(0, text=progress_text)
-                
-                # Assume columns 'ID_TELEGRAM' or 'CHAT_ID' exist or will be added
-                # Fallback to empty if not exists
-                tg_col = 'ID_TELEGRAM' if 'ID_TELEGRAM' in remind_data.columns else ('CHAT_ID' if 'CHAT_ID' in remind_data.columns else None)
-                
-                if not tg_col:
-                    st.warning("⚠️ Kolom ID_TELEGRAM tidak ditemukan dalam data. Pastikan Google Sheet sudah diperbarui.")
-                else:
-                    for i, (idx, row) in enumerate(remind_data.iterrows()):
-                        chat_id = row.get(tg_col)
-                        if pd.notna(chat_id) and str(chat_id).strip():
-                            msg = f"<b>PENGINGAT LHKPN UNJA</b>\n\nYth. Bapak/Ibu <b>{row['NAMA']}</b>,\n\nStatus LHKPN Anda saat ini: <b>{row['Status LHKPN']}</b>.\nMohon segera melengkapi pengisian LHKPN sesuai kondisi terbaru.\n\nTerima kasih."
-                            ok, res = send_telegram_message(st.session_state['tg_token'], str(chat_id), msg)
-                            if ok: success_count += 1
-                            else: fail_count += 1
+        if blast_btn and email_col:
+            success_count = 0
+            fail_count = 0
+            progress_text = "Mengirim blast email..."
+            my_bar = st.progress(0, text=progress_text)
+            
+            for i, (idx, row) in enumerate(remind_data.iterrows()):
+                to_email = str(row.get(email_col)).strip()
+                if to_email and '@' in to_email:
+                    # Format isi template email
+                    subj = subj_template
+                    try:
+                        body = body_template.format(
+                            NAMA=row['NAMA'],
+                            STATUS_LHKPN=row['Status LHKPN'],
+                            BULAN=sel_bln
+                        )
+                    except Exception as format_err:
+                        # Fallback jika placeholder error
+                        body = f"Yth. {row['NAMA']},\n\nMohon segera melengkapi LHKPN Anda. Status saat ini: {row['Status LHKPN']}."
                         
-                        my_bar.progress((i + 1) / len(remind_data), text=f"Proses: {i+1}/{len(remind_data)}")
-                    
-                    st.success(f"✅ Blast selesai! Berhasil: {success_count}, Gagal: {fail_count}")
+                    ok, res = send_email_via_gas(to_email, subj, body)
+                    if ok: 
+                        success_count += 1
+                    else: 
+                        fail_count += 1
+                else:
+                    fail_count += 1
+                
+                my_bar.progress((i + 1) / len(remind_data), text=f"Proses: {i+1}/{len(remind_data)}")
+            
+            st.success(f"✅ Blast email selesai! Berhasil: {success_count}, Gagal/Dilewati: {fail_count}")
 
         st.divider()
-        st.write("#### 👤 Daftar Individu (Kuning/Merah)")
+        st.write("#### 📧 Daftar Penerima Email (Kuning/Merah)")
         
         # Display list with manual remind buttons
         for idx, row in remind_data.head(20).iterrows(): # Limit display for performance
@@ -335,27 +359,29 @@ if st.session_state['role'] == 'admin':
             c1.write(f"**{row['NAMA']}**")
             c2.write(f"{row['ZONA']}")
             
-            # Individual Bot Send
-            tg_col = 'ID_TELEGRAM' if 'ID_TELEGRAM' in remind_data.columns else ('CHAT_ID' if 'CHAT_ID' in remind_data.columns else None)
-            chat_id = row.get(tg_col) if tg_col else None
-            
-            if c3.button("🤖 Bot", key=f"bot_{idx}", disabled=not chat_id or not st.session_state.get('tg_token')):
-                msg = f"Yth. {row['NAMA']}, mohon segera update LHKPN Anda (Status: {row['Status LHKPN']}). Terima kasih."
-                ok, res = send_telegram_message(st.session_state['tg_token'], str(chat_id), msg)
-                if ok: st.toast(f"✅ Terkirim ke {row['NAMA']}")
-                else: st.error(f"❌ {res}")
-            
-            # Manual Web Link
-            # Assume phone number column is 'NO_HP' or 'PHONE'
-            phone_col = 'NO_HP' if 'NO_HP' in remind_data.columns else ('PHONE' if 'PHONE' in remind_data.columns else None)
-            phone = row.get(phone_col) if phone_col else None
-            
-            if phone:
-                msg_manual = f"Halo {row['NAMA']}, ini pengingat LHKPN UNJA. Status Anda: {row['Status LHKPN']}. Mohon segera dilengkapi."
-                link = get_telegram_link(phone, msg_manual)
-                c4.markdown(f'<a href="{link}" target="_blank"><button style="width:100%; border-radius:4px; border:1px solid #ddd; background:#f0f2f6; cursor:pointer;">📱 Manual</button></a>', unsafe_allow_html=True)
+            to_email = str(row.get(email_col)).strip() if email_col else ""
+            if to_email and '@' in to_email:
+                c3.write(f"📧 `{to_email}`")
+                
+                # Individual email preview and trigger
+                try:
+                    preview_body = body_template.format(
+                        NAMA=row['NAMA'],
+                        STATUS_LHKPN=row['Status LHKPN'],
+                        BULAN=sel_bln
+                    )
+                except:
+                    preview_body = f"Yth. {row['NAMA']},\n\nMohon segera melengkapi LHKPN Anda. Status saat ini: {row['Status LHKPN']}."
+                
+                if c4.button("Kirim", key=f"mail_{idx}"):
+                    ok, res = send_email_via_gas(to_email, subj_template, preview_body)
+                    if ok: 
+                        st.toast(f"✅ Terkirim ke {row['NAMA']}")
+                    else: 
+                        st.error(f"❌ {res}")
             else:
-                c4.write("🚫 No HP")
+                c3.write("🚫 Email Kosong")
+                c4.write("")
 
         if len(remind_data) > 20:
             st.info(f"Menampilkan 20 dari {len(remind_data)} orang. Gunakan filter tabel untuk mencari spesifik.")
