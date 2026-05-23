@@ -260,38 +260,79 @@ def generate_executive_report(data, periode=""):
         # ========== SHEET 3: DATA DETAIL ==========
         # Clean columns — remove internal helper columns
         detail_cols = [c for c in data.columns if c not in ['rank', 'NIK_KEY']]
+        detail_data = data[detail_cols].copy().reset_index(drop=True)
+
+        # Add sequential No column at the front
+        detail_data.insert(0, 'No', range(1, len(detail_data) + 1))
+
+        # Force NIK as string to preserve leading zeros
+        if 'NIK' in detail_data.columns:
+            detail_data['NIK'] = detail_data['NIK'].astype(str).str.strip()
+
         # Remove emoji from ZONA for cleaner export
-        detail_data = data[detail_cols].copy()
         detail_data['ZONA'] = detail_data['ZONA'].str.replace(r'[🟢🟡🔴⚪]\s*', '', regex=True)
 
+        all_detail_cols = list(detail_data.columns)
         detail_data.to_excel(writer, sheet_name="Data Detail", index=False, startrow=1)
         ws_detail = writer.sheets["Data Detail"]
-        ws_detail.merge_cells(f'A1:{get_column_letter(len(detail_cols))}1')
+
+        ncols_d = len(all_detail_cols)
+        ws_detail.merge_cells(f'A1:{get_column_letter(ncols_d)}1')
         ws_detail['A1'].value = f"Data Detail Wajib Lapor LHKPN — {periode if periode else 'Global'}"
         ws_detail['A1'].font = subtitle_font
 
-        ncols_d = len(detail_cols)
         style_header_row(ws_detail, row=2, cols=ncols_d)
 
-        # Style data + conditional zona coloring
-        zona_col_idx = detail_cols.index('ZONA') + 1 if 'ZONA' in detail_cols else None
+        # Find column indices for special handling
+        zona_col_idx = all_detail_cols.index('ZONA') + 1 if 'ZONA' in all_detail_cols else None
+        nik_col_idx = all_detail_cols.index('NIK') + 1 if 'NIK' in all_detail_cols else None
+        wrap_align = Alignment(vertical='center', wrap_text=True)
+        center_wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+        # Style data rows + conditional zona coloring + wrap text
         for r in range(3, len(detail_data) + 3):
             for c in range(1, ncols_d + 1):
                 cell = ws_detail.cell(row=r, column=c)
                 cell.border = thin_border
+                cell.alignment = wrap_align
+                # Force NIK as text so Excel doesn't mangle it
+                if c == nik_col_idx:
+                    cell.number_format = '@'
+                    cell.value = str(cell.value) if cell.value is not None else ""
+                # Center the No column
+                if c == 1:
+                    cell.alignment = center_wrap
             if zona_col_idx:
                 zona_val = str(ws_detail.cell(row=r, column=zona_col_idx).value or "")
+                row_fill = None
                 if "HIJAU" in zona_val:
-                    for c in range(1, ncols_d + 1):
-                        ws_detail.cell(row=r, column=c).fill = green_fill
+                    row_fill = green_fill
                 elif "KUNING" in zona_val:
-                    for c in range(1, ncols_d + 1):
-                        ws_detail.cell(row=r, column=c).fill = yellow_fill
+                    row_fill = yellow_fill
                 elif "MERAH" in zona_val:
+                    row_fill = red_fill
+                if row_fill:
                     for c in range(1, ncols_d + 1):
-                        ws_detail.cell(row=r, column=c).fill = red_fill
+                        ws_detail.cell(row=r, column=c).fill = row_fill
 
-        auto_width(ws_detail)
+        # Set sensible column widths (not too wide)
+        for col_cells in ws_detail.columns:
+            col_letter = get_column_letter(col_cells[0].column)
+            col_idx = col_cells[0].column
+            header_name = all_detail_cols[col_idx - 1] if col_idx <= len(all_detail_cols) else ""
+            if header_name == 'No':
+                ws_detail.column_dimensions[col_letter].width = 5
+            elif header_name == 'NIK':
+                ws_detail.column_dimensions[col_letter].width = 22
+            elif header_name == 'NAMA':
+                ws_detail.column_dimensions[col_letter].width = 28
+            elif header_name == 'SUB UNIT KERJA':
+                ws_detail.column_dimensions[col_letter].width = 30
+            elif header_name in ('Status LHKPN', 'ZONA'):
+                ws_detail.column_dimensions[col_letter].width = 22
+            else:
+                max_len = max((len(str(c.value or "")) for c in col_cells), default=0)
+                ws_detail.column_dimensions[col_letter].width = max(8, min(max_len + 2, 30))
 
         # Remove default empty 'Sheet' if created
         if "Sheet" in writer.book.sheetnames:
