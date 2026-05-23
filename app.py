@@ -347,7 +347,7 @@ else:
             u_stagnan_adm = unit_stats_adm.sort_values('Persen_Hijau').head(1)
         atensi_label = f"Unit <b>{u_stagnan_adm.index[0]}</b> ({u_stagnan_adm.iloc[0]['Persen_Hijau']:.1f}%)" if not u_stagnan_adm.empty else "Semua Unit Ada Pergerakan"
 
-        render_executive_panel(data, paripurna_txt, len(top3_adm), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0))
+        render_executive_panel(data, paripurna_txt, len(top3_adm), atensi_label, ((h+k)/total_wl*100 if total_wl > 0 else 0), periode=sel_bln)
         st.write("")
 
     # TABEL & GRAFIK
