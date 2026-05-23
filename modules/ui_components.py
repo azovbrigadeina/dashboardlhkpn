@@ -258,9 +258,22 @@ def generate_executive_report(data, periode=""):
         ws_unit.column_dimensions['A'].width = 35
 
         # ========== SHEET 3: DATA DETAIL ==========
-        # Clean columns — remove internal helper columns
-        detail_cols = [c for c in data.columns if c not in ['rank', 'NIK_KEY']]
-        detail_data = data[detail_cols].copy().reset_index(drop=True)
+        # Clean columns — remove internal helper columns and the original "No." column to prevent duplicates
+        detail_cols = [c for c in data.columns if c not in ['rank', 'NIK_KEY', 'No.']]
+        detail_data = data[detail_cols].copy()
+
+        # Sort by Status LHKPN: Terverifikasi Lengkap first, then others in a logical sequence
+        status_order = {
+            'Terverifikasi Lengkap': 1,
+            'Diumumkan Lengkap': 2,
+            'Proses Verifikasi': 3,
+            'Perlu Perbaikan': 4,
+            'Diumumkan Tidak Lengkap': 5,
+            'Draft': 6,
+            'Belum Lapor': 7
+        }
+        detail_data['status_sort_idx'] = detail_data['Status LHKPN'].astype(str).str.strip().map(status_order).fillna(99)
+        detail_data = detail_data.sort_values('status_sort_idx').drop(columns=['status_sort_idx']).reset_index(drop=True)
 
         # Add sequential No column at the front
         detail_data.insert(0, 'No', range(1, len(detail_data) + 1))
