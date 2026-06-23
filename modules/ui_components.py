@@ -3,8 +3,6 @@ import streamlit as st
 def inject_custom_css():
     st.markdown("""
     <style>
-
-
     .metric-card {
         background-color: white;
         padding: 20px;
