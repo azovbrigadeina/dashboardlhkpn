@@ -3,18 +3,7 @@ import streamlit as st
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* Hide default Streamlit elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    [data-testid="stHeader"] {display: none !important;}
-    [data-testid="stDecoration"] {display: none !important;}
-    
-    /* Hide Streamlit Community Cloud floating buttons / viewer badges */
-    [class^="viewerBadge"] { display: none !important; }
-    [class*="viewerBadge"] { display: none !important; }
-    [class^="styles_viewerBadge"] { display: none !important; }
-    [class*="styles_viewerBadge"] { display: none !important; }
+
 
     .metric-card {
         background-color: white;
